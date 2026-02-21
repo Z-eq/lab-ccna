@@ -2,6 +2,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { TOPO_IMAGES } from "./topoImages";
 
 // ─── LAB DATA ────────────────────────────────────────────────────────────────
+// Each task now has: hint (solution commands), check (array of keyword arrays to verify)
+// check: each inner array = one required command. All inner arrays must match for task to pass.
+// A command matches if ALL keywords in the inner array appear in any single command entered on the correct device.
+
 const LABS = [
   {
     id: 1, title: "Static Routes & OSPF", category: "Routing",
@@ -13,10 +17,18 @@ const LABS = [
     ],
     topology: `Internet (172.20.20.128/25)\n    |.254\n   R3 (E0/1)\n    |E0/0 .3\n    | 10.10.13.0/24\n    |E0/0 .1\n   R1 ──E0/1(.1)── 10.10.12.0/25 ──E0/1(.2)── R2\n    └──E0/2(.129)── 10.10.12.128/25 ──E0/2(.130)─┘\n                                         E0/0 .2\n                                    10.10.31.0/24\n                                         E0/0 .1\n                                         SW1\n                                    LAN: 192.168.0.0/24`,
     tasks: [
-      { id: 1, text: "Configure reachability to the switch SW1 LAN subnet (192.168.0.0/24) in router R2", device: "R2", hint: "ip route 192.168.0.0 255.255.255.0 10.10.31.1" },
-      { id: 2, text: "Configure default reachability to the Internet subnet (172.20.20.128/25) in router R1", device: "R1", hint: "ip route 0.0.0.0 0.0.0.0 10.10.13.3" },
-      { id: 3, text: "Configure a single static route in R2 to reach the Internet subnet. Use both redundant links (ECMP). No default route allowed.", device: "R2", hint: "ip route 172.20.20.128 255.255.255.128 10.10.12.1\nip route 172.20.20.128 255.255.255.128 10.10.12.129" },
-      { id: 4, text: "Configure static route on R1 toward SW1 LAN. Primary via E0/1, backup via E0/2 (floating route, minimal AD)", device: "R1", hint: "ip route 192.168.0.0 255.255.255.0 Ethernet0/1 10.10.12.2\nip route 192.168.0.0 255.255.255.0 Ethernet0/2 10.10.12.130 2" }
+      { id: 1, text: "Configure reachability to the switch SW1 LAN subnet (192.168.0.0/24) in router R2", device: "R2",
+        hint: "ip route 192.168.0.0 255.255.255.0 10.10.31.1",
+        check: [["ip route","192.168.0.0","255.255.255.0","10.10.31.1"]] },
+      { id: 2, text: "Configure default reachability to the Internet subnet (172.20.20.128/25) in router R1", device: "R1",
+        hint: "ip route 0.0.0.0 0.0.0.0 10.10.13.3",
+        check: [["ip route","0.0.0.0","0.0.0.0","10.10.13.3"]] },
+      { id: 3, text: "Configure a single static route in R2 to reach the Internet subnet (172.20.20.128/25) via both redundant links (ECMP). No default route allowed.", device: "R2",
+        hint: "ip route 172.20.20.128 255.255.255.128 10.10.12.1\nip route 172.20.20.128 255.255.255.128 10.10.12.129",
+        check: [["ip route","172.20.20.128","255.255.255.128","10.10.12.1"],["ip route","172.20.20.128","255.255.255.128","10.10.12.129"]] },
+      { id: 4, text: "Configure static route on R1 toward SW1 LAN. Primary via E0/1 (next-hop 10.10.12.2), backup via E0/2 (floating route, AD 2)", device: "R1",
+        hint: "ip route 192.168.0.0 255.255.255.0 10.10.12.2\nip route 192.168.0.0 255.255.255.0 10.10.12.130 2",
+        check: [["ip route","192.168.0.0","255.255.255.0","10.10.12.2"],["ip route","192.168.0.0","255.255.255.0","10.10.12.130","2"]] }
     ]
   },
   {
@@ -27,12 +39,20 @@ const LABS = [
       { name: "R2", type: "router", hostname: "R2", interfaces: { "Ethernet0/0": { ip: "10.1.1.2/24", status: "up" }, "Ethernet0/1": { ip: "10.1.3.1/24", status: "up" } } },
       { name: "R3", type: "router", hostname: "R3", interfaces: { "Ethernet0/1": { ip: "10.1.3.3/24", status: "up" }, "Ethernet0/2": { ip: "dhcp", status: "up" } } }
     ],
-    topology: `R1 (Lo0: 192.168.100.1)\n  E0/0 ── 10.1.1.0/24 ── E0/0 R2 E0/1 ── 10.1.3.0/24 ── E0/1 R3\n  E0/2 ── 10.1.2.0/24 ── E0/2 R2`,
+    topology: `R1 (Lo0: 192.168.100.1)\n  E0/0 ── 10.1.1.0/24 ── E0/0 R2 E0/1 ── 10.1.3.0/24 ── E0/1 R3\n  E0/2 ── 10.1.2.0/24`,
     tasks: [
-      { id: 1, text: "Configure NAT on R2: Translate R3 source to R2 E0/0 IP using standard ACL named PUBNET. Ping R1 Lo0 from R3.", device: "R2", hint: "ip nat inside source list PUBNET interface Ethernet0/0 overload\nip access-list standard PUBNET\npermit 10.1.3.0 0.0.0.255\ninterface Ethernet0/1\nip nat inside\ninterface Ethernet0/0\nip nat outside" },
-      { id: 2, text: "Configure R1 as NTP server, R2 as client using R1 E0/2 IP (10.1.2.1). Set clock to midnight May 1, 2018.", device: "R1", hint: "ntp master\nclock set 00:00:00 May 1 2018" },
-      { id: 3, text: "Configure R1 DHCP server for 10.1.3.0/24, pool NETPOOL. Exclude 1-10. R3 E0/2 gets 10.1.3.11 via DHCP.", device: "R1", hint: "ip dhcp excluded-address 10.1.3.1 10.1.3.10\nip dhcp pool NETPOOL\nnetwork 10.1.3.0 255.255.255.0" },
-      { id: 4, text: "Configure SSH from R1 to R3. User netadmin/N3t4ccess on R3, RSA 1024 bits. Exclude other remote protocols.", device: "R3", hint: "username netadmin password N3t4ccess\nline vty 0 4\ntransport input ssh\nlogin local\ncrypto key generate rsa\n1024" }
+      { id: 1, text: "Configure NAT on R2: Translate R3 source to R2 E0/0 IP using standard ACL named PUBNET. No NVI.", device: "R2",
+        hint: "ip nat inside source list PUBNET interface Ethernet0/0 overload\nip access-list standard PUBNET\npermit 10.1.3.0 0.0.0.255\ninterface Ethernet0/1\nip nat inside\ninterface Ethernet0/0\nip nat outside",
+        check: [["ip nat inside source list","pubnet","interface","ethernet0/0","overload"],["ip access-list standard","pubnet"],["permit","10.1.3.0","0.0.0.255"],["ip nat inside"],["ip nat outside"]] },
+      { id: 2, text: "Configure R1 as NTP master server. Set clock to midnight May 1, 2018. Configure R2 as NTP client using R1 E0/2 IP (10.1.2.1).", device: "R1",
+        hint: "On R1:\nntp master\nclock set 00:00:00 May 1 2018\n\nOn R2:\nntp server 10.1.2.1",
+        check: [["ntp master"]] },
+      { id: 3, text: "Configure R1 DHCP server: pool NETPOOL, network 10.1.3.0/24, exclude addresses 1-10.", device: "R1",
+        hint: "ip dhcp excluded-address 10.1.3.1 10.1.3.10\nip dhcp pool NETPOOL\nnetwork 10.1.3.0 255.255.255.0",
+        check: [["ip dhcp excluded-address","10.1.3.1","10.1.3.10"],["ip dhcp pool","netpool"],["network","10.1.3.0","255.255.255.0"]] },
+      { id: 4, text: "Configure SSH on R3: user netadmin/N3t4ccess, RSA 1024 bits, SSH only on VTY lines.", device: "R3",
+        hint: "username netadmin password N3t4ccess\nip domain-name lab.local\ncrypto key generate rsa\n1024\nline vty 0 4\ntransport input ssh\nlogin local",
+        check: [["username","netadmin"],["crypto key generate rsa"],["transport input ssh"],["login local"]] }
     ]
   },
   {
@@ -44,136 +64,208 @@ const LABS = [
     ],
     topology: `SW1 (E0/0) ──── VLAN 12 ──── (E0/0) SW2\n │E0/1                          │E0/1\n Phone+PC                       PC\n VLAN 12+34                   VLAN "Available"`,
     tasks: [
-      { id: 1, text: "Configure VLAN 12 named Compute and VLAN 34 named Telephony where required", device: "SW1", hint: "vlan 12\nname Compute\nvlan 34\nname Telephony" },
-      { id: 2, text: "Configure E0/1 on SW2 to use the existing VLAN named Available", device: "SW2", hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan ?" },
-      { id: 3, text: "Configure the connection between switches using access ports", device: "SW1", hint: "interface Ethernet0/0\nswitchport mode access\nswitchport access vlan 12" },
-      { id: 4, text: "Configure E0/1 on SW1 using data and voice VLANs", device: "SW1", hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 12\nswitchport voice vlan 34" },
-      { id: 5, text: "Configure E0/1 on SW2 to disable Cisco proprietary neighbor discovery (CDP)", device: "SW2", hint: "interface Ethernet0/1\nno cdp enable" }
+      { id: 1, text: "Configure VLAN 12 named Compute and VLAN 34 named Telephony on SW1", device: "SW1",
+        hint: "vlan 12\nname Compute\nvlan 34\nname Telephony",
+        check: [["vlan","12"],["name","compute"],["vlan","34"],["name","telephony"]] },
+      { id: 2, text: "Configure E0/1 on SW2 as access port using the existing VLAN named Available", device: "SW2",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan <Available VLAN ID>",
+        check: [["switchport mode access"],["switchport access vlan"]] },
+      { id: 3, text: "Configure E0/0 on both switches as access ports for VLAN 12", device: "SW1",
+        hint: "interface Ethernet0/0\nswitchport mode access\nswitchport access vlan 12\n\n! Also on SW2:\ninterface Ethernet0/0\nswitchport mode access\nswitchport access vlan 12",
+        check: [["switchport mode access"],["switchport access vlan","12"]] },
+      { id: 4, text: "Configure E0/1 on SW1 with data VLAN 12 and voice VLAN 34", device: "SW1",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 12\nswitchport voice vlan 34",
+        check: [["switchport access vlan","12"],["switchport voice vlan","34"]] },
+      { id: 5, text: "Disable CDP on E0/1 of SW2 (interface only, not globally)", device: "SW2",
+        hint: "interface Ethernet0/1\nno cdp enable",
+        check: [["no cdp enable"]] }
     ]
   },
   {
-    id: 4, title: "ACL, User Accounts & DHCP Snooping", category: "Security",
+    id: 4, title: "User Account, ACL & DHCP Snooping (Variant A)", category: "Security",
     source: "Q213",
     devices: [
-      { name: "Gw1", type: "router", hostname: "Gw1", interfaces: { "Ethernet0/0": { ip: "10.10.10.1/24", status: "up" }, "Ethernet0/2": { ip: "209.165.201.1/30", status: "up" } } },
-      { name: "Sw1", type: "switch", hostname: "Sw1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" } } }
+      { name: "Gw1", type: "router", hostname: "Gw1", interfaces: { "Ethernet0/0": { ip: "10.10.10.1/24", status: "up" } } },
+      { name: "Sw1", type: "switch", hostname: "Sw1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
     ],
-    topology: `Internet ── (E0/2) Gw1 (E0/0) ── Sw3 ── Sw1\n                                    │        │\n                                  HostC    HostA\n                                 VLAN10   VLAN10`,
+    topology: `Internet ── Gw1 ── Sw1 ── PCs\n               VLAN 10`,
     tasks: [
-      { id: 1, text: "Configure local account on Gw1: username wheel, password lock3path, scrypt, exec mode, telnet on vty 0-4", device: "Gw1", hint: "username wheel algorithm-type scrypt secret lock3path\nline vty 0 4\nlogin local\ntransport input telnet" },
-      { id: 2, text: "Configure NACL CORP_ACL on Gw1: Allow BOOTP and HTTPS, deny all with detailed logging", device: "Gw1", hint: "ip access-list extended CORP_ACL\npermit udp any any eq bootps\npermit udp any any eq bootpc\npermit tcp any any eq 443\ndeny ip any any log-input" },
-      { id: 3, text: "Configure DHCP Snooping on Sw1 for VLAN 10: disable Option-82, enable MAC verify, trusted interfaces", device: "Sw1", hint: "ip dhcp snooping\nip dhcp snooping vlan 10\nno ip dhcp snooping information option\nip dhcp snooping verify mac-address\ninterface Ethernet0/2\nip dhcp snooping trust" }
+      { id: 1, text: "Configure local account on Gw1: username wheel, password lock3path, algorithm scrypt, exec privilege. Telnet only on VTY 0-4.", device: "Gw1",
+        hint: "username wheel algorithm-type scrypt secret lock3path\nline vty 0 4\nlogin local\ntransport input telnet",
+        check: [["username","wheel"],["secret","lock3path"],["login local"],["transport input telnet"]] },
+      { id: 2, text: "Configure NACL CORP_ACL on Gw1: allow BOOTP (UDP 67-68) and HTTPS (TCP 443), deny all other traffic with log-input", device: "Gw1",
+        hint: "ip access-list extended CORP_ACL\npermit udp any any range 67 68\npermit tcp any any eq 443\ndeny ip any any log-input",
+        check: [["ip access-list extended","corp_acl"],["permit udp","67","68"],["permit tcp","443"],["deny ip any any log-input"]] },
+      { id: 3, text: "Configure DHCP Snooping on Sw1: enable for VLAN 10, disable Option-82, enable MAC verification, set trusted interfaces", device: "Sw1",
+        hint: "ip dhcp snooping\nip dhcp snooping vlan 10\nno ip dhcp snooping information option\nip dhcp snooping verify mac-address\ninterface Ethernet0/0\nip dhcp snooping trust",
+        check: [["ip dhcp snooping vlan","10"],["no ip dhcp snooping information option"],["ip dhcp snooping verify mac-address"],["ip dhcp snooping trust"]] }
     ]
   },
   {
-    id: 5, title: "ACL, User Accounts & DHCP Snooping (v2)", category: "Security",
+    id: 5, title: "User Account, ACL & DHCP Snooping (Variant B)", category: "Security",
     source: "Q214",
     devices: [
-      { name: "Gw1", type: "router", hostname: "Gw1", interfaces: { "Ethernet0/0": { ip: "10.10.10.1/24", status: "up" }, "Ethernet0/2": { ip: "209.165.201.1/30", status: "up" } } },
-      { name: "Sw1", type: "switch", hostname: "Sw1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" } } }
+      { name: "Gw1", type: "router", hostname: "Gw1", interfaces: { "Ethernet0/0": { ip: "10.10.10.1/24", status: "up" } } },
+      { name: "Sw1", type: "switch", hostname: "Sw1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
     ],
-    topology: `Internet ── (E0/2) Gw1 (E0/0) ── Sw3 ── Sw1\n                                  VLAN 10/20`,
+    topology: `Internet ── Gw1 ── Sw1 ── PCs\n               VLAN 10`,
     tasks: [
-      { id: 1, text: "Configure local account on Gw1: username wheel, password lock3path, scrypt, exec mode, telnet vty 0-4", device: "Gw1", hint: "username wheel algorithm-type scrypt secret lock3path\nline vty 0 4\nlogin local\ntransport input telnet" },
-      { id: 2, text: "Configure NACL CORP_ACL: Allow BOOTP+HTTPS, deny all with log-input", device: "Gw1", hint: "ip access-list extended CORP_ACL\npermit udp any any eq bootps\npermit udp any any eq bootpc\npermit tcp any any eq 443\ndeny ip any any log-input" },
-      { id: 3, text: "Configure DHCP Snooping on Sw1 for VLAN 10", device: "Sw1", hint: "ip dhcp snooping\nip dhcp snooping vlan 10\nno ip dhcp snooping information option\nip dhcp snooping verify mac-address" }
+      { id: 1, text: "Configure local account on Gw1: username wheel, password lock3path, algorithm scrypt, exec privilege. Telnet only on VTY 0-4.", device: "Gw1",
+        hint: "username wheel algorithm-type scrypt secret lock3path\nline vty 0 4\nlogin local\ntransport input telnet",
+        check: [["username","wheel"],["secret","lock3path"],["login local"],["transport input telnet"]] },
+      { id: 2, text: "Configure NACL CORP_ACL on Gw1: allow BOOTP and HTTPS, deny rest with log-input", device: "Gw1",
+        hint: "ip access-list extended CORP_ACL\npermit udp any any range 67 68\npermit tcp any any eq 443\ndeny ip any any log-input",
+        check: [["ip access-list extended","corp_acl"],["permit udp","67","68"],["permit tcp","443"],["deny ip any any log-input"]] },
+      { id: 3, text: "Configure DHCP Snooping on Sw1: enable for VLAN 10, disable Option-82, enable MAC verification, set trusted interfaces", device: "Sw1",
+        hint: "ip dhcp snooping\nip dhcp snooping vlan 10\nno ip dhcp snooping information option\nip dhcp snooping verify mac-address\ninterface Ethernet0/0\nip dhcp snooping trust",
+        check: [["ip dhcp snooping vlan","10"],["no ip dhcp snooping information option"],["ip dhcp snooping verify mac-address"],["ip dhcp snooping trust"]] }
     ]
   },
   {
     id: 6, title: "OSPF Configuration", category: "Routing",
     source: "Q227",
     devices: [
-      { name: "R1", type: "router", hostname: "R1", interfaces: { "GigabitEthernet0/0": { ip: "192.168.2.8/24", status: "up" }, "GigabitEthernet0/1": { ip: "10.10.13.1/24", status: "up" }, "Loopback1": { ip: "1.1.1.1/32", status: "up" } } },
-      { name: "R2", type: "router", hostname: "R2", interfaces: { "GigabitEthernet0/0": { ip: "192.168.2.1/24", status: "up" }, "Loopback0": { ip: "2.2.2.1/32", status: "up" }, "Loopback1": { ip: "2.2.2.2/32", status: "up" } } },
-      { name: "R3", type: "router", hostname: "R3", interfaces: { "GigabitEthernet0/0": { ip: "192.168.2.6/24", status: "up" }, "GigabitEthernet0/1": { ip: "10.10.13.3/24", status: "up" }, "Loopback1": { ip: "3.3.3.3/32", status: "up" } } }
+      { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/0": { ip: "10.10.12.1/30", status: "up" }, "Ethernet0/1": { ip: "10.10.13.1/30", status: "up" }, "Loopback1": { ip: "1.1.1.1/32", status: "up" } } },
+      { name: "R2", type: "router", hostname: "R2", interfaces: { "Ethernet0/0": { ip: "10.10.12.2/30", status: "up" }, "Ethernet0/1": { ip: "10.10.23.2/30", status: "up" }, "Loopback1": { ip: "2.2.2.2/32", status: "up" } } },
+      { name: "R3", type: "router", hostname: "R3", interfaces: { "Ethernet0/0": { ip: "10.10.23.3/30", status: "up" }, "Ethernet0/1": { ip: "10.10.13.3/30", status: "up" }, "Loopback1": { ip: "3.3.3.3/32", status: "up" } } }
     ],
-    topology: `       R2 (192.168.2.1, Lo: 2.2.2.1)\n       │G0/0\n       │ 192.168.2.0/24\n  R1 ──┤── R3\n G0/0  │  G0/0\n .8    │  .6\n       │\n R1 ──G0/1── 10.10.13.0/24 ──G0/1── R3`,
+    topology: `R1 (Lo1: 1.1.1.1) ──E0/0── 10.10.12.0/30 ──E0/0── R2 (Lo1: 2.2.2.2)\n │E0/1                                              │E0/1\n 10.10.13.0/30                                   10.10.23.0/30\n │E0/1                                              │E0/0\n R3 (Lo1: 3.3.3.3)`,
     tasks: [
-      { id: 1, text: "Configure R1 Router ID using shared link IP (192.168.2.8), R2 Router ID (192.168.2.1)", device: "R1", hint: "router ospf 1\nrouter-id 192.168.2.8" },
-      { id: 2, text: "Configure R2 OSPF priority to max (255) facing R1/R3. R2 must become DR.", device: "R2", hint: "interface GigabitEthernet0/0\nip ospf priority 255" },
-      { id: 3, text: "Advertise Loopback1 networks on all routers using host wildcard mask", device: "R1", hint: "router ospf 1\nnetwork 1.1.1.1 0.0.0.0 area 0" },
-      { id: 4, text: "Configure R1-R3 link to disable adding other OSPF routers (passive)", device: "R1", hint: "router ospf 1\npassive-interface GigabitEthernet0/1" }
+      { id: 1, text: "Configure R1 router-id as 10.10.12.1 and R2 router-id as 10.10.12.2 (shared link IPs)", device: "R1",
+        hint: "router ospf 1\nrouter-id 10.10.12.1\n\n! On R2:\nrouter ospf 1\nrouter-id 10.10.12.2",
+        check: [["router ospf"],["router-id","10.10.12.1"]] },
+      { id: 2, text: "Set R2 OSPF priority to max (255) on E0/0 and E0/1 so R2 becomes DR. R1 and R3 keep defaults.", device: "R2",
+        hint: "interface Ethernet0/0\nip ospf priority 255\ninterface Ethernet0/1\nip ospf priority 255",
+        check: [["ip ospf priority","255"]] },
+      { id: 3, text: "Advertise each router's Loopback1 in OSPF using host wildcard mask (0.0.0.0) on all three routers", device: "R1",
+        hint: "router ospf 1\nnetwork 1.1.1.1 0.0.0.0 area 0\n\n! On R2: network 2.2.2.2 0.0.0.0 area 0\n! On R3: network 3.3.3.3 0.0.0.0 area 0",
+        check: [["network","0.0.0.0","area"]] },
+      { id: 4, text: "Configure passive-interface on R1 E0/1 and R3 E0/1 (the R1-R3 link) to prevent new OSPF neighbors", device: "R1",
+        hint: "router ospf 1\npassive-interface Ethernet0/1\n\n! On R3:\nrouter ospf 1\npassive-interface Ethernet0/1",
+        check: [["passive-interface"]] }
     ]
   },
   {
     id: 7, title: "Static Routes to ISP & LAN", category: "Routing",
     source: "Q244",
     devices: [
-      { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/0": { ip: "10.0.1.1/30", status: "up" }, "Ethernet0/1": { ip: "10.0.1.5/30", status: "up" } } },
-      { name: "R2", type: "router", hostname: "R2", interfaces: { "Ethernet0/0": { ip: "10.0.1.2/30", status: "up" }, "Ethernet0/1": { ip: "10.0.2.1/30", status: "up" } } }
+      { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/0": { ip: "10.0.12.1/30", status: "up" }, "Ethernet0/1": { ip: "10.0.13.1/30", status: "up" }, "Ethernet0/2": { ip: "209.165.200.225/27", status: "up" } } },
+      { name: "R2", type: "router", hostname: "R2", interfaces: { "Ethernet0/0": { ip: "10.0.12.2/30", status: "up" }, "Ethernet0/1": { ip: "10.0.24.2/30", status: "up" }, "Ethernet0/2": { ip: "209.165.200.226/27", status: "up" } } }
     ],
-    topology: `ISP ── R1 ── R2 ── R3 ── R4(LAN: 10.0.41.0/24)\n            └── R3 (alternate path)`,
+    topology: `ISP (209.165.200.224/27)\n  │E0/2\n  R1 ──E0/0── 10.0.12.0/30 ──E0/0── R2\n  │E0/1                              │E0/1\n  10.0.13.0/30 ──R3                  10.0.24.0/30 ──R4\n                                     LAN: 10.0.41.0/24`,
     tasks: [
-      { id: 1, text: "Configure a default route on R2 to the ISP (via R1)", device: "R2", hint: "ip route 0.0.0.0 0.0.0.0 10.0.1.1" },
-      { id: 2, text: "Configure a default route on R1 to the ISP", device: "R1", hint: "ip route 0.0.0.0 0.0.0.0 <ISP-next-hop>" },
-      { id: 3, text: "Configure R2 with a route to Server 10.0.41.10", device: "R2", hint: "ip route 10.0.41.0 255.255.255.0 10.0.2.2" },
-      { id: 4, text: "Configure R1 with a route to LAN preferring R3 as primary path", device: "R1", hint: "ip route 10.0.41.0 255.255.255.0 <R3-next-hop>" }
+      { id: 1, text: "Configure a default route on R2 to the ISP (via 209.165.200.225)", device: "R2",
+        hint: "ip route 0.0.0.0 0.0.0.0 209.165.200.225",
+        check: [["ip route","0.0.0.0","0.0.0.0"]] },
+      { id: 2, text: "Configure a default route on R1 to the ISP (via 209.165.200.226 or directly connected)", device: "R1",
+        hint: "ip route 0.0.0.0 0.0.0.0 209.165.200.226",
+        check: [["ip route","0.0.0.0","0.0.0.0"]] },
+      { id: 3, text: "Configure R2 with a route to the Server at 10.0.41.10/32 via R4 (10.0.24.4)", device: "R2",
+        hint: "ip route 10.0.41.0 255.255.255.0 10.0.24.4",
+        check: [["ip route","10.0.41"]] },
+      { id: 4, text: "Configure R1 with a route to the LAN (10.0.41.0/24) that prefers R3 as primary path", device: "R1",
+        hint: "ip route 10.0.41.0 255.255.255.0 10.0.13.3\nip route 10.0.41.0 255.255.255.0 10.0.12.2 2",
+        check: [["ip route","10.0.41.0","255.255.255.0"]] }
     ]
   },
   {
-    id: 8, title: "VLANs, Access Ports & LLDP/CDP", category: "Switching",
+    id: 8, title: "VLANs, CDP & LLDP", category: "Switching",
     source: "Q252-Sim1",
     devices: [
       { name: "SW-1", type: "switch", hostname: "SW-1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" } } },
       { name: "SW-2", type: "switch", hostname: "SW-2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" } } }
     ],
-    topology: `R1──SW-1(E0/0)────(E0/0)SW-2──R2\n     │E0/1              │E0/1\n     PC1(VLAN15)        PC2(VLAN66)\n     E0/2────────────E0/2`,
+    topology: `R1──(E0/0)SW-1(E0/2)──(E0/2)SW-2(E0/0)──R2\n          │E0/1              │E0/1\n          PC1(VLAN15)        PC2(VLAN66)`,
     tasks: [
-      { id: 1, text: "Configure SW-1 with VLAN 15 labeled exactly as OPS", device: "SW-1", hint: "vlan 15\nname OPS" },
-      { id: 2, text: "Configure SW-2 with VLAN 66 labeled exactly as ENGINEERING", device: "SW-2", hint: "vlan 66\nname ENGINEERING" },
-      { id: 3, text: "Configure the switch port connecting to PC1 (E0/1 on SW-1)", device: "SW-1", hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 15\nno shutdown" },
-      { id: 4, text: "Configure the switch port connecting to PC2 (E0/1 on SW-2)", device: "SW-2", hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 66\nno shutdown" },
-      { id: 5, text: "Configure E0/2 for LLDP (vendor-neutral) and E0/0 for CDP (Cisco proprietary)", device: "SW-1", hint: "lldp run\ninterface Ethernet0/2\nlldp transmit\nlldp receive\ninterface Ethernet0/0\ncdp enable" }
+      { id: 1, text: "Configure VLAN 15 named OPS on SW-1", device: "SW-1",
+        hint: "vlan 15\nname OPS",
+        check: [["vlan","15"],["name","ops"]] },
+      { id: 2, text: "Configure VLAN 66 named ENGINEERING on SW-2", device: "SW-2",
+        hint: "vlan 66\nname ENGINEERING",
+        check: [["vlan","66"],["name","engineering"]] },
+      { id: 3, text: "Configure SW-1 E0/1 as access port for VLAN 15 (PC1)", device: "SW-1",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 15",
+        check: [["switchport mode access"],["switchport access vlan","15"]] },
+      { id: 4, text: "Configure SW-2 E0/1 as access port for VLAN 66 (PC2)", device: "SW-2",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 66",
+        check: [["switchport mode access"],["switchport access vlan","66"]] },
+      { id: 5, text: "Enable LLDP on E0/2 (vendor-neutral) and ensure CDP stays on E0/0 (Cisco proprietary) on both switches", device: "SW-1",
+        hint: "interface Ethernet0/2\nlldp transmit\nlldp receive\nno cdp enable\ninterface Ethernet0/0\ncdp enable",
+        check: [["lldp transmit"],["lldp receive"]] }
     ]
   },
   {
-    id: 9, title: "VLANs, Access & LLDP (v2)", category: "Switching",
+    id: 9, title: "VLANs, LLDP & Access Ports", category: "Switching",
     source: "Q252-Sim2",
     devices: [
       { name: "SW-1", type: "switch", hostname: "SW-1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } },
       { name: "SW-2", type: "switch", hostname: "SW-2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
     ],
-    topology: `R1──SW-1────SW-2──R1\n     │E0/1    │E0/1\n     PC1      PC2\n   VLAN35   VLAN39`,
+    topology: `R1──SW-1(E0/1)──PC1(VLAN35)\n      │E0/0\n      │E0/0\n    SW-2(E0/1)──PC2(VLAN39)`,
     tasks: [
-      { id: 1, text: "Configure SW-1 with VLAN 35 labeled SALES", device: "SW-1", hint: "vlan 35\nname SALES" },
-      { id: 2, text: "Configure SW-2 with VLAN 39 labeled MARKETING", device: "SW-2", hint: "vlan 39\nname MARKETING" },
-      { id: 3, text: "Configure switch port connecting to PC1", device: "SW-1", hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 35" },
-      { id: 4, text: "Configure switch port connecting to PC2", device: "SW-2", hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 39" },
-      { id: 5, text: "Enable LLDP globally, disable on PC1 interface", device: "SW-1", hint: "lldp run\ninterface Ethernet0/1\nno lldp transmit\nno lldp receive" }
+      { id: 1, text: "Configure VLAN 35 named SALES on SW-1", device: "SW-1",
+        hint: "vlan 35\nname SALES",
+        check: [["vlan","35"],["name","sales"]] },
+      { id: 2, text: "Configure VLAN 39 named MARKETING on SW-2", device: "SW-2",
+        hint: "vlan 39\nname MARKETING",
+        check: [["vlan","39"],["name","marketing"]] },
+      { id: 3, text: "Configure SW-1 E0/1 as access port for PC1 (VLAN 35)", device: "SW-1",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 35",
+        check: [["switchport mode access"],["switchport access vlan","35"]] },
+      { id: 4, text: "Configure SW-2 E0/1 as access port for PC2 (VLAN 39)", device: "SW-2",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 39",
+        check: [["switchport mode access"],["switchport access vlan","39"]] },
+      { id: 5, text: "Enable LLDP globally on both switches, disable LLDP on SW-1 E0/1 (PC1 interface)", device: "SW-1",
+        hint: "lldp run\ninterface Ethernet0/1\nno lldp transmit\nno lldp receive\n\n! On SW-2:\nlldp run",
+        check: [["lldp run"],["no lldp transmit"]] }
     ]
   },
   {
-    id: 10, title: "802.1Q Trunking & LACP", category: "Switching",
+    id: 10, title: "Trunking, Native VLAN & LACP", category: "Switching",
     source: "Q254",
     devices: [
       { name: "SW-1", type: "switch", hostname: "SW-1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" } } },
       { name: "SW-2", type: "switch", hostname: "SW-2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" } } },
       { name: "SW-3", type: "switch", hostname: "SW-3", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
     ],
-    topology: `SW-1(E0/0,E0/1)──────(E0/0,E0/1)SW-2\n  │E0/2                    │E0/2\n  └──────(E0/0)SW-3(E0/1)──┘`,
+    topology: `SW-1(E0/0,E0/1)══Po══(E0/0,E0/1)SW-2\n │E0/2                          │E0/2\n SW-3(E0/0)              SW-3(E0/1)`,
     tasks: [
-      { id: 1, text: "Configure SW-1/SW-2 E0/0 and E0/1 for 802.1q trunking allowing all VLANs", device: "SW-1", hint: "interface Ethernet0/0\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\ninterface Ethernet0/1\nswitchport trunk encapsulation dot1q\nswitchport mode trunk" },
-      { id: 2, text: "Configure native VLAN 35 on SW-1 E0/2, SW-2 E0/2, SW-3 E0/0 and E0/1", device: "SW-1", hint: "interface Ethernet0/2\nswitchport trunk native vlan 35" },
-      { id: 3, text: "Configure LACP: SW-1 active, SW-2 passive on E0/0 and E0/1", device: "SW-1", hint: "interface Ethernet0/0\nchannel-group 12 mode active\ninterface Ethernet0/1\nchannel-group 12 mode active" }
+      { id: 1, text: "Configure SW-1 and SW-2 E0/0 and E0/1 as 802.1q trunks allowing all VLANs", device: "SW-1",
+        hint: "interface Ethernet0/0\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\ninterface Ethernet0/1\nswitchport trunk encapsulation dot1q\nswitchport mode trunk",
+        check: [["switchport trunk encapsulation dot1q"],["switchport mode trunk"]] },
+      { id: 2, text: "Set native VLAN 35 on inter-switch links: SW-1 E0/2, SW-2 E0/2, SW-3 E0/0 and E0/1", device: "SW-1",
+        hint: "interface Ethernet0/2\nswitchport trunk native vlan 35",
+        check: [["switchport trunk native vlan","35"]] },
+      { id: 3, text: "Configure LACP on SW-1 E0/0+E0/1 (active) and SW-2 E0/0+E0/1 (passive)", device: "SW-1",
+        hint: "interface Ethernet0/0\nchannel-group 1 mode active\ninterface Ethernet0/1\nchannel-group 1 mode active\n\n! On SW-2:\ninterface Ethernet0/0\nchannel-group 1 mode passive\ninterface Ethernet0/1\nchannel-group 1 mode passive",
+        check: [["channel-group","mode active"]] }
     ]
   },
   {
-    id: 11, title: "Trunking, Native VLAN & LACP (v2)", category: "Switching",
+    id: 11, title: "Trunking, LACP & Native VLAN", category: "Switching",
     source: "Q257",
     devices: [
       { name: "SW-2", type: "switch", hostname: "SW-2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/2": { status: "up" }, "Ethernet0/3": { status: "up" } } },
       { name: "SW-3", type: "switch", hostname: "SW-3", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/2": { status: "up" }, "Ethernet0/3": { status: "up" } } }
     ],
-    topology: `SW-1(pre-configured)\n  │E0/0          │E0/0\n SW-2            SW-3\n  │E0/2,E0/3────E0/2,E0/3│\n  (Port-channel)`,
+    topology: `SW-1══(E0/0)SW-2(E0/2,E0/3)══Po══(E0/2,E0/3)SW-3(E0/0)══SW-4\n              VLAN 10,11`,
     tasks: [
-      { id: 1, text: "Configure SW-2/SW-3 E0/0 for dot1q trunk, tag only VLAN 10", device: "SW-2", hint: "interface Ethernet0/0\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 10" },
-      { id: 2, text: "Configure SW-2/SW-3 E0/0 native VLAN 11 (untagged traffic)", device: "SW-2", hint: "interface Ethernet0/0\nswitchport trunk native vlan 11" },
-      { id: 3, text: "Configure E0/2 and E0/3 as dot1q trunk allowing all VLANs", device: "SW-2", hint: "interface range Ethernet0/2 - 3\nswitchport trunk encapsulation dot1q\nswitchport mode trunk" },
-      { id: 4, text: "Configure LACP: SW-2 passive, SW-3 active on E0/2-3", device: "SW-2", hint: "interface Ethernet0/2\nchannel-group 1 mode passive\ninterface Ethernet0/3\nchannel-group 1 mode passive" }
+      { id: 1, text: "Configure SW-2 and SW-3 E0/0 as 802.1q trunks allowing only VLAN 10", device: "SW-2",
+        hint: "interface Ethernet0/0\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 10",
+        check: [["switchport trunk encapsulation dot1q"],["switchport mode trunk"],["switchport trunk allowed vlan","10"]] },
+      { id: 2, text: "Set native VLAN 11 on SW-2 and SW-3 E0/0 for untagged traffic", device: "SW-2",
+        hint: "interface Ethernet0/0\nswitchport trunk native vlan 11",
+        check: [["switchport trunk native vlan","11"]] },
+      { id: 3, text: "Configure SW-2 and SW-3 E0/2+E0/3 as 802.1q trunks allowing all VLANs", device: "SW-2",
+        hint: "interface Ethernet0/2\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\ninterface Ethernet0/3\nswitchport trunk encapsulation dot1q\nswitchport mode trunk",
+        check: [["switchport trunk encapsulation dot1q"],["switchport mode trunk"]] },
+      { id: 4, text: "Configure LACP: SW-2 E0/2+E0/3 passive, SW-3 E0/2+E0/3 active, use designated port-channel number", device: "SW-2",
+        hint: "interface Ethernet0/2\nchannel-group 1 mode passive\ninterface Ethernet0/3\nchannel-group 1 mode passive\n\n! On SW-3:\ninterface Ethernet0/2\nchannel-group 1 mode active\ninterface Ethernet0/3\nchannel-group 1 mode active",
+        check: [["channel-group","mode passive"]] }
     ]
   },
   {
-    id: 12, title: "Trunk Allowed VLANs & LACP", category: "Switching",
+    id: 12, title: "Trunk Filtering, LACP & Native VLAN", category: "Switching",
     source: "Q262",
     devices: [
       { name: "SW-1", type: "switch", hostname: "SW-1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } },
@@ -181,40 +273,58 @@ const LABS = [
       { name: "SW-3", type: "switch", hostname: "SW-3", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } },
       { name: "SW-4", type: "switch", hostname: "SW-4", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
     ],
-    topology: `R1──(E0/0)SW-1(E0/1)──(E0/1)SW-2(E0/2)\n              │                    │\n           SW-3(E0/0,E0/1)──(E0/0,E0/1)SW-4`,
+    topology: `R1──(E0/0)SW-1(E0/1)──(E0/1)SW-2(E0/2)──SW-3/SW-4\n VLANs 5,6,77`,
     tasks: [
-      { id: 1, text: "Configure SW-1 E0/0 to permit only VLANs 5 and 6", device: "SW-1", hint: "interface Ethernet0/0\nswitchport trunk allowed vlan 5,6" },
-      { id: 2, text: "Configure SW-1 & SW-2 E0/1 native VLAN 77 (untagged)", device: "SW-1", hint: "interface Ethernet0/1\nswitchport trunk native vlan 77" },
-      { id: 3, text: "Configure SW-2 E0/2 to permit only VLAN 6", device: "SW-2", hint: "interface Ethernet0/2\nswitchport trunk allowed vlan 6" },
-      { id: 4, text: "Configure LACP: SW-3 active, SW-4 passive on E0/0 & E0/1", device: "SW-3", hint: "interface Ethernet0/0\nchannel-group 1 mode active\ninterface Ethernet0/1\nchannel-group 1 mode active" }
+      { id: 1, text: "Configure SW-1 E0/0 trunk to permit only VLANs 5 and 6", device: "SW-1",
+        hint: "interface Ethernet0/0\nswitchport trunk allowed vlan 5,6",
+        check: [["switchport trunk allowed vlan","5","6"]] },
+      { id: 2, text: "Configure SW-1 and SW-2 E0/1 with native VLAN 77 for untagged traffic", device: "SW-1",
+        hint: "interface Ethernet0/1\nswitchport trunk native vlan 77",
+        check: [["switchport trunk native vlan","77"]] },
+      { id: 3, text: "Configure SW-2 E0/2 trunk to permit only VLAN 6", device: "SW-2",
+        hint: "interface Ethernet0/2\nswitchport trunk allowed vlan 6",
+        check: [["switchport trunk allowed vlan","6"]] },
+      { id: 4, text: "Configure LACP: SW-3 E0/0+E0/1 active, SW-4 E0/0+E0/1 passive", device: "SW-3",
+        hint: "interface Ethernet0/0\nchannel-group 1 mode active\ninterface Ethernet0/1\nchannel-group 1 mode active\n\n! On SW-4:\ninterface Ethernet0/0\nchannel-group 1 mode passive\ninterface Ethernet0/1\nchannel-group 1 mode passive",
+        check: [["channel-group","mode active"]] }
     ]
   },
   {
-    id: 13, title: "ACL, Users & DHCP Snooping (v3)", category: "Security",
+    id: 13, title: "User Account, ACL & DHCP Snooping (Variant C)", category: "Security",
     source: "Q267",
     devices: [
-      { name: "Sw103", type: "switch", hostname: "Sw103", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } },
+      { name: "Sw103", type: "switch", hostname: "Sw103", interfaces: { "Ethernet0/0": { status: "up" } } },
       { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/0": { ip: "172.16.0.1/16", status: "up" } } },
-      { name: "Sw101", type: "switch", hostname: "Sw101", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
+      { name: "Sw101", type: "switch", hostname: "Sw101", interfaces: { "Ethernet0/0": { status: "up" } } }
     ],
-    topology: `Internet ── R1 ── Sw103 ── Sw101\n                         VLAN 101`,
+    topology: `Internet ── R1 ── Sw101 ── Sw103 ── PCs\n               VLAN 101`,
     tasks: [
-      { id: 1, text: "Configure local account on Sw103: devnet/access8cli, SHA256, exec mode, telnet vty 0-4", device: "Sw103", hint: "username devnet algorithm-type sha256 secret access8cli\nline vty 0 4\nlogin local\ntransport input telnet" },
-      { id: 2, text: "Modify NACL INTERNET_ACL on R1: Allow HTTPS from 172.16.0.0/16, Telnet for VLAN 101 only, deny all with log-input", device: "R1", hint: "ip access-list extended INTERNET_ACL\npermit tcp 172.16.0.0 0.0.255.255 any eq 443\npermit tcp <VLAN101-subnet> any eq 23\ndeny ip any any log-input" },
-      { id: 3, text: "Configure DHCP Snooping on Sw101 for VLAN 101, disable Option-82, enable MAC verify", device: "Sw101", hint: "ip dhcp snooping\nip dhcp snooping vlan 101\nno ip dhcp snooping information option\nip dhcp snooping verify mac-address" }
+      { id: 1, text: "Configure local account on Sw103: username devnet, password access8cli, SHA256, exec privilege. Telnet on VTY 0-4.", device: "Sw103",
+        hint: "username devnet algorithm-type sha256 secret access8cli\nline vty 0 4\nlogin local\ntransport input telnet",
+        check: [["username","devnet"],["secret","access8cli"],["login local"],["transport input telnet"]] },
+      { id: 2, text: "Modify NACL INTERNET_ACL on R1: allow HTTPS from 172.16.0.0/16, allow telnet for VLAN 101 only, deny rest with log-input", device: "R1",
+        hint: "ip access-list extended INTERNET_ACL\npermit tcp 172.16.0.0 0.0.255.255 any eq 443\npermit tcp <VLAN101-subnet> <wildcard> any eq 23\ndeny ip any any log-input",
+        check: [["ip access-list extended","internet_acl"],["permit tcp","172.16","443"],["deny ip any any log-input"]] },
+      { id: 3, text: "Configure DHCP Snooping on Sw101: enable for VLAN 101, disable Option-82, enable MAC verification", device: "Sw101",
+        hint: "ip dhcp snooping\nip dhcp snooping vlan 101\nno ip dhcp snooping information option\nip dhcp snooping verify mac-address",
+        check: [["ip dhcp snooping vlan","101"],["no ip dhcp snooping information option"],["ip dhcp snooping verify mac-address"]] }
     ]
   },
   {
-    id: 14, title: "IPv4 & IPv6 Subnetting", category: "IP Addressing",
+    id: 14, title: "IPv4 & IPv6 Subnetting", category: "IP Services",
     source: "Q268-Sim1",
     devices: [
       { name: "Sw101", type: "switch", hostname: "Sw101", interfaces: { "Ethernet0/0": { status: "up" } } },
       { name: "Sw102", type: "switch", hostname: "Sw102", interfaces: { "Ethernet0/0": { status: "up" } } }
     ],
-    topology: `Sw101 (E0/0) ─── (E0/0) Sw102\n\nSubnet 10.30.64.0/19 → 64 subnets\nSubnet 2001:db8::/56 → 64 subnets`,
+    topology: `Sw101(E0/0) ──── (E0/0)Sw102\n  64 sites needed\n  IPv4: 10.30.64.0/19\n  IPv6: 2001:db8::/56`,
     tasks: [
-      { id: 1, text: "Subnet 10.30.64.0/19 for 64 sites. Use 2nd subnet: first usable IP → Sw101 E0/0, last usable → Sw102 E0/0", device: "Sw101", hint: "interface Ethernet0/0\nip address 10.30.66.1 255.255.254.0\n(2nd /25 subnet = 10.30.64.128, first=.129, last=.254)" },
-      { id: 2, text: "Subnet 2001:db8::/56 for 64 sites. Use 2nd subnet with EUI-64 on both switches", device: "Sw101", hint: "interface Ethernet0/0\nipv6 address 2001:db8:0:1::/64 eui-64" }
+      { id: 1, text: "Subnet 10.30.64.0/19 for 64 sites, max hosts. Use 2nd subnet: assign first usable IP to Sw101 E0/0, last usable to Sw102 E0/0", device: "Sw101",
+        hint: "! /19 into 64 subnets = /25 (128 hosts each)\n! 1st subnet: 10.30.64.0/25 (unavailable)\n! 2nd subnet: 10.30.64.128/25\n! First usable: 10.30.64.129, Last usable: 10.30.64.254\n\ninterface Ethernet0/0\nip address 10.30.64.129 255.255.255.128\nno shutdown\n\n! On Sw102:\ninterface Ethernet0/0\nip address 10.30.64.254 255.255.255.128\nno shutdown",
+        check: [["ip address","10.30.64.129","255.255.255.128"]] },
+      { id: 2, text: "Subnet 2001:db8::/56 for 64 sites. Use 2nd subnet. Assign IPv6 GUA with EUI-64 on both switches E0/0", device: "Sw101",
+        hint: "! /56 into 64 subnets = /62... but we need /64 for EUI-64\n! 2nd /64 subnet: 2001:db8:0:1::/64\n\ninterface Ethernet0/0\nipv6 address 2001:db8:0:1::/64 eui-64\nno shutdown\n\n! On Sw102:\ninterface Ethernet0/0\nipv6 address 2001:db8:0:1::/64 eui-64\nno shutdown",
+        check: [["ipv6 address","2001:db8","eui-64"]] }
     ]
   },
   {
@@ -222,30 +332,43 @@ const LABS = [
     source: "Q268-Sim2",
     devices: [
       { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/0": { ip: "2001:db8:12::1/64", status: "up" }, "Ethernet0/1": { ip: "2001:db8:13::1/64", status: "up" } } },
-      { name: "R2", type: "router", hostname: "R2", interfaces: { "Ethernet0/0": { ip: "2001:db8:12::2/64", status: "up" } } },
-      { name: "R3", type: "router", hostname: "R3", interfaces: { "Ethernet0/1": { ip: "2001:db8:13::3/64", status: "up" } } }
+      { name: "R2", type: "router", hostname: "R2", interfaces: { "Ethernet0/0": { ip: "2001:db8:12::2/64", status: "up" }, "Ethernet0/1": { ip: "2001:db8:24::2/64", status: "up" } } },
+      { name: "R3", type: "router", hostname: "R3", interfaces: { "Ethernet0/0": { ip: "2001:db8:34::3/64", status: "up" }, "Ethernet0/1": { ip: "2001:db8:13::3/64", status: "up" } } }
     ],
-    topology: `R1 ──E0/0── 2001:db8:12::/64 ──E0/0── R2\n │E0/1                              │\n 2001:db8:13::/64              2001:db8:41::/64\n │E0/1\n R3 ─── 2001:db8:41::/64`,
+    topology: `R1 ──E0/0── R2 ──E0/1── 2001:db8:41::/64\n │E0/1\n R3 ──E0/0── 2001:db8:41::/64 (backup)`,
     tasks: [
-      { id: 1, text: "Configure route on R1 to 2001:db8:41::/64 preferring R2", device: "R1", hint: "ipv6 route 2001:db8:41::/64 2001:db8:12::2" },
-      { id: 2, text: "Configure floating route on R1 via R3 (higher AD) as backup", device: "R1", hint: "ipv6 route 2001:db8:41::/64 2001:db8:13::3 5" },
-      { id: 3, text: "Verify ping and traceroute work", device: "R1", hint: "ping 2001:db8:41::1\ntraceroute 2001:db8:41::1" }
+      { id: 1, text: "Configure IPv6 route on R1 to 2001:db8:41::/64 via R2 (preferred, default AD)", device: "R1",
+        hint: "ipv6 route 2001:db8:41::/64 2001:db8:12::2",
+        check: [["ipv6 route","2001:db8:41::/64","2001:db8:12::2"]] },
+      { id: 2, text: "Configure floating IPv6 route on R1 to 2001:db8:41::/64 via R3 (higher AD for backup)", device: "R1",
+        hint: "ipv6 route 2001:db8:41::/64 2001:db8:13::3 2",
+        check: [["ipv6 route","2001:db8:41::/64","2001:db8:13::3"]] }
     ]
   },
   {
-    id: 16, title: "Switch Ports, Voice VLAN & CDP/LLDP", category: "Switching",
+    id: 16, title: "Voice VLAN, LLDP & CDP", category: "Switching",
     source: "Q269",
     devices: [
-      { name: "SW-1", type: "switch", hostname: "SW-1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } },
+      { name: "SW-1", type: "switch", hostname: "SW-1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" } } },
       { name: "SW-2", type: "switch", hostname: "SW-2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
     ],
-    topology: `R1 ── (E0/0) SW-1 (E0/0) ─── (E0/0) SW-2\n                │E0/1              │E0/1\n              Phone+PC              PC2\n              VLAN 10`,
+    topology: `R1──(E0/0)SW-1(E0/2)──(E0/0)SW-2\n          │E0/1              │E0/1\n         Phone+PC            PC2`,
     tasks: [
-      { id: 1, text: "Configure SW-1 E0/1 for IP phone and PC traffic", device: "SW-1", hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 10\nswitchport voice vlan 20" },
-      { id: 2, text: "Configure SW-2 E0/1 for PC2 traffic", device: "SW-2", hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 10" },
-      { id: 3, text: "Configure VLAN 10 named Engineering on SW-1", device: "SW-1", hint: "vlan 10\nname Engineering" },
-      { id: 4, text: "Configure SW-1 to SW-2 link for vendor-neutral neighbor discovery (LLDP)", device: "SW-1", hint: "lldp run\ninterface Ethernet0/0\nlldp transmit\nlldp receive" },
-      { id: 5, text: "Disable CDP on SW-1 link to R1", device: "SW-1", hint: "interface Ethernet0/0\nno cdp enable" }
+      { id: 1, text: "Configure SW-1 E0/1 for IP phone + PC (access + voice VLANs)", device: "SW-1",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 10\nswitchport voice vlan 20",
+        check: [["switchport access vlan"],["switchport voice vlan"]] },
+      { id: 2, text: "Configure SW-2 E0/1 as access port for PC2", device: "SW-2",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 10",
+        check: [["switchport mode access"],["switchport access vlan"]] },
+      { id: 3, text: "Configure VLAN 10 named Engineering on SW-1", device: "SW-1",
+        hint: "vlan 10\nname Engineering",
+        check: [["vlan","10"],["name","engineering"]] },
+      { id: 4, text: "Enable LLDP (vendor-neutral) on the link between SW-1 and SW-2 (E0/2 and E0/0)", device: "SW-1",
+        hint: "interface Ethernet0/2\nlldp transmit\nlldp receive\n\n! On SW-2 E0/0:\nlldp transmit\nlldp receive",
+        check: [["lldp transmit"],["lldp receive"]] },
+      { id: 5, text: "Disable CDP on SW-1 E0/0 (link to R1)", device: "SW-1",
+        hint: "interface Ethernet0/0\nno cdp enable",
+        check: [["no cdp enable"]] }
     ]
   },
   {
@@ -255,126 +378,181 @@ const LABS = [
       { name: "Sw1", type: "switch", hostname: "Sw1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" }, "Ethernet0/3": { status: "up" } } },
       { name: "Sw2", type: "switch", hostname: "Sw2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" }, "Ethernet0/3": { status: "up" } } }
     ],
-    topology: `Sw1(E0/0)────(E0/0)Sw2\n │E0/1-3        │E0/1-3\n Phones+PCs    Phones+PCs`,
+    topology: `Sw1(E0/0)──(E0/0)Sw2\n │E0/1,E0/2,E0/3      │E0/1,E0/2,E0/3\n Phone+PCs             Phone+PCs\n Data VLAN + Voice VLAN`,
     tasks: [
-      { id: 1, text: "Configure both VLANs on Sw1 and Sw2 with names from topology", device: "Sw1", hint: "vlan <data-vlan>\nname <data-name>\nvlan <voice-vlan>\nname <voice-name>" },
-      { id: 2, text: "Configure E0/1, E0/2, E0/3 on both switches for voice and data VLANs", device: "Sw1", hint: "interface range Ethernet0/1 - 3\nswitchport mode access\nswitchport access vlan <data>\nswitchport voice vlan <voice>" },
-      { id: 3, text: "Configure vendor-neutral neighbor discovery (LLDP) on E0/0 of both switches", device: "Sw1", hint: "lldp run\ninterface Ethernet0/0\nlldp transmit\nlldp receive" }
+      { id: 1, text: "Configure both VLANs on Sw1 and Sw2 with names from topology", device: "Sw1",
+        hint: "vlan <data-vlan-id>\nname <data-name>\nvlan <voice-vlan-id>\nname <voice-name>",
+        check: [["vlan"],["name"]] },
+      { id: 2, text: "Configure E0/1, E0/2, E0/3 on both switches for data + voice (IP phones and PCs)", device: "Sw1",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan <data>\nswitchport voice vlan <voice>\ninterface Ethernet0/2\nswitchport mode access\nswitchport access vlan <data>\nswitchport voice vlan <voice>\ninterface Ethernet0/3\nswitchport mode access\nswitchport access vlan <data>\nswitchport voice vlan <voice>",
+        check: [["switchport mode access"],["switchport access vlan"],["switchport voice vlan"]] },
+      { id: 3, text: "Enable LLDP (vendor-neutral) on E0/0 of both Sw1 and Sw2", device: "Sw1",
+        hint: "interface Ethernet0/0\nlldp transmit\nlldp receive\n\n! or globally: lldp run",
+        check: [["lldp"]] }
     ]
   },
   {
-    id: 18, title: "Trunk Allowed VLANs & LACP (v2)", category: "Switching",
+    id: 18, title: "Trunking & LACP with Allowed VLANs", category: "Switching",
     source: "Q270-Sim2",
     devices: [
       { name: "SW-1", type: "switch", hostname: "SW-1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" } } },
       { name: "SW-2", type: "switch", hostname: "SW-2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
     ],
-    topology: `SW-1(E0/0,E0/1)──(E0/0,E0/1)SW-2\n  │E0/2\n SW-3/SW-4 (preconfigured)`,
+    topology: `SW-3──(E0/2)SW-1(E0/0,E0/1)══Po══(E0/0,E0/1)SW-2──SW-4\n       VLANs 1,12,22`,
     tasks: [
-      { id: 1, text: "Configure SW-1/SW-2 E0/0 and E0/1: 802.1q trunk, allow only VLANs 1,12,22", device: "SW-1", hint: "interface Ethernet0/0\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 1,12,22" },
-      { id: 2, text: "Configure SW-1 E0/2: 802.1q trunk, only VLANs 12 and 22", device: "SW-1", hint: "interface Ethernet0/2\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 12,22" },
-      { id: 3, text: "Configure LACP on SW-1/SW-2 E0/0,E0/1 — all ports must immediately negotiate", device: "SW-1", hint: "interface Ethernet0/0\nchannel-group 1 mode active\ninterface Ethernet0/1\nchannel-group 1 mode active" }
+      { id: 1, text: "Configure SW-1 and SW-2 E0/0+E0/1 as 802.1q trunks, permit only VLANs 1, 12, and 22", device: "SW-1",
+        hint: "interface Ethernet0/0\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 1,12,22\ninterface Ethernet0/1\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 1,12,22",
+        check: [["switchport trunk encapsulation dot1q"],["switchport mode trunk"],["switchport trunk allowed vlan","1","12","22"]] },
+      { id: 2, text: "Configure SW-1 E0/2 as 802.1q trunk with only VLANs 12 and 22", device: "SW-1",
+        hint: "interface Ethernet0/2\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 12,22",
+        check: [["switchport trunk allowed vlan","12","22"]] },
+      { id: 3, text: "Configure LACP on SW-1 and SW-2 E0/0+E0/1: both sides active (immediately negotiate)", device: "SW-1",
+        hint: "interface Ethernet0/0\nchannel-group 1 mode active\ninterface Ethernet0/1\nchannel-group 1 mode active\n\n! On SW-2 same: channel-group 1 mode active",
+        check: [["channel-group","mode active"]] }
     ]
   },
   {
-    id: 19, title: "NAT, DHCP, NTP & SSH (v2)", category: "IP Services",
+    id: 19, title: "NAT Pool, DHCP, NTP & SSH", category: "IP Services",
     source: "Q272-Sim1",
     devices: [
-      { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/0": { ip: "10.1.1.1/24", status: "up" }, "Loopback0": { ip: "192.168.100.1/24", status: "up" } } },
+      { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/0": { ip: "10.1.1.1/24", status: "up" }, "Ethernet0/2": { ip: "10.1.2.1/24", status: "up" }, "Loopback0": { ip: "192.168.100.1/24", status: "up" } } },
       { name: "R2", type: "router", hostname: "R2", interfaces: { "Ethernet0/0": { ip: "10.1.1.2/24", status: "up" }, "Ethernet0/1": { ip: "10.1.3.1/24", status: "up" } } },
-      { name: "R3", type: "router", hostname: "R3", interfaces: { "Ethernet0/1": { ip: "10.1.3.3/24", status: "up" }, "Ethernet0/2": { status: "up" } } }
+      { name: "R3", type: "router", hostname: "R3", interfaces: { "Ethernet0/1": { ip: "10.1.3.3/24", status: "up" }, "Ethernet0/2": { ip: "dhcp", status: "up" } } }
     ],
-    topology: `R1 (Lo0:192.168.100.1) ── R2 ── R3`,
+    topology: `R1(Lo0:192.168.100.1) ── R2 ── R3\n  10.1.1.0/24      10.1.3.0/24`,
     tasks: [
-      { id: 1, text: "Configure dynamic 1-to-1 NAT on R2: ACL XLATE, pool test_pool (10.10.10.0/24)", device: "R2", hint: "ip nat pool test_pool 10.10.10.1 10.10.10.254 netmask 255.255.255.0\nip access-list standard XLATE\npermit any\nip nat inside source list XLATE pool test_pool" },
-      { id: 2, text: "Configure R3 E0/2 to receive IP via DHCP", device: "R3", hint: "interface Ethernet0/2\nip address dhcp" },
-      { id: 3, text: "Configure R1 as NTP server, R2 as client using 10.1.2.1", device: "R1", hint: "ntp master" },
-      { id: 4, text: "Configure SSH on R3: user root, password s3cret, RSA, exclude other protocols", device: "R3", hint: "username root secret s3cret\nline vty 0 4\ntransport input ssh\nlogin local\ncrypto key generate rsa" }
+      { id: 1, text: "Configure dynamic 1-to-1 NAT on R2: ACL XLATE permits R3 subnet, pool test_pool uses 10.10.10.0/24. Mark inside/outside interfaces.", device: "R2",
+        hint: "ip nat pool test_pool 10.10.10.1 10.10.10.254 netmask 255.255.255.0\nip nat inside source list XLATE pool test_pool\nip access-list standard XLATE\npermit 10.1.3.0 0.0.0.255\ninterface Ethernet0/1\nip nat inside\ninterface Ethernet0/0\nip nat outside",
+        check: [["ip nat pool","test_pool","10.10.10"],["ip nat inside source list","xlate","pool","test_pool"],["ip access-list standard","xlate"],["permit","10.1.3.0","0.0.0.255"],["ip nat inside"],["ip nat outside"]] },
+      { id: 2, text: "Configure R3 E0/2 to receive IP via DHCP", device: "R3",
+        hint: "interface Ethernet0/2\nip address dhcp\nno shutdown",
+        check: [["ip address dhcp"]] },
+      { id: 3, text: "Configure R1 as NTP master, R2 as NTP client using R1 IP 10.1.2.1", device: "R1",
+        hint: "ntp master\n\n! On R2:\nntp server 10.1.2.1",
+        check: [["ntp master"]] },
+      { id: 4, text: "Configure SSH on R3: user root/s3cret, RSA keys, SSH only on VTY lines", device: "R3",
+        hint: "username root secret s3cret\nip domain-name lab.local\ncrypto key generate rsa\n1024\nline vty 0 4\ntransport input ssh\nlogin local",
+        check: [["username","root"],["crypto key generate rsa"],["transport input ssh"],["login local"]] }
     ]
   },
   {
-    id: 20, title: "VLAN 99, Access Ports & CDP", category: "Switching",
+    id: 20, title: "VLAN, Access Ports & CDP", category: "Switching",
     source: "Q272-Sim2",
     devices: [
       { name: "SW-1", type: "switch", hostname: "SW-1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } },
       { name: "SW-2", type: "switch", hostname: "SW-2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } },
       { name: "SW-3", type: "switch", hostname: "SW-3", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
     ],
-    topology: `SW-1(E0/1:PC1)──SW-2(E0/1:PC2)──SW-3(E0/1:PC3)\n    All VLAN 99 FINANCIAL`,
+    topology: `SW-1(E0/1)──PC1  SW-2(E0/1)──PC2  SW-3(E0/1)──PC3\n VLAN 99 FINANCIAL on all switches`,
     tasks: [
-      { id: 1, text: "Configure VLAN 99 on all three switches labeled FINANCIAL", device: "SW-1", hint: "vlan 99\nname FINANCIAL" },
-      { id: 2, text: "Configure switch ports to PCs (E0/1) as access ports in VLAN 99", device: "SW-1", hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 99" },
-      { id: 3, text: "Re-enable CDP on SW-1 (it was disabled)", device: "SW-1", hint: "cdp run" },
-      { id: 4, text: "Prevent PC1 from discovering SW-1 (disable CDP on E0/1)", device: "SW-1", hint: "interface Ethernet0/1\nno cdp enable" }
+      { id: 1, text: "Configure VLAN 99 named FINANCIAL on all three switches", device: "SW-1",
+        hint: "vlan 99\nname FINANCIAL\n\n! Same on SW-2 and SW-3",
+        check: [["vlan","99"],["name","financial"]] },
+      { id: 2, text: "Configure E0/1 as access port for VLAN 99 on all switches (PC ports)", device: "SW-1",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 99",
+        check: [["switchport mode access"],["switchport access vlan","99"]] },
+      { id: 3, text: "Re-enable CDP globally on SW-1 (it was disabled)", device: "SW-1",
+        hint: "cdp run",
+        check: [["cdp run"]] },
+      { id: 4, text: "Disable CDP on SW-1 E0/1 so PC1 cannot discover SW-1", device: "SW-1",
+        hint: "interface Ethernet0/1\nno cdp enable",
+        check: [["no cdp enable"]] }
     ]
   },
   {
-    id: 21, title: "User Account, ACL & Dynamic ARP Inspection", category: "Security",
+    id: 21, title: "User Account, ACL & DAI", category: "Security",
     source: "Q274",
     devices: [
-      { name: "Sw3", type: "switch", hostname: "Sw3", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } },
+      { name: "Sw3", type: "switch", hostname: "Sw3", interfaces: { "Ethernet0/0": { status: "up" } } },
       { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/0": { ip: "10.0.0.1/24", status: "up" } } },
-      { name: "Sw2", type: "switch", hostname: "Sw2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
+      { name: "Sw2", type: "switch", hostname: "Sw2", interfaces: { "Ethernet0/0": { status: "up" } } }
     ],
-    topology: `ISP ── R1 ── Sw3 ── Sw2\n                    VLAN 5`,
+    topology: `ISP ── R1 ── Sw2 ── Sw3 ── PCs\n               VLAN 5`,
     tasks: [
-      { id: 1, text: "Configure local account on Sw3: tech12/load1key, md5, exec mode, telnet vty 0-4", device: "Sw3", hint: "username tech12 algorithm-type md5 secret load1key\nline vty 0 4\nlogin local\ntransport input telnet" },
-      { id: 2, text: "Configure NACL ISP_ACL on R1: Restrict RFC1918 class A (10.0.0.0/8) and B (172.16.0.0/12), allow all else", device: "R1", hint: "ip access-list extended ISP_ACL\ndeny ip 10.0.0.0 0.255.255.255 any\ndeny ip 172.16.0.0 0.15.255.255 any\npermit ip any any" },
-      { id: 3, text: "Configure DAI on Sw2: VLAN 5, validate dst-mac, src-mac, and IP", device: "Sw2", hint: "ip arp inspection vlan 5\nip arp inspection validate dst-mac src-mac ip" }
+      { id: 1, text: "Configure local account on Sw3: username tech12, password load1key, MD5, exec privilege. Telnet on VTY 0-4.", device: "Sw3",
+        hint: "username tech12 algorithm-type md5 secret load1key\nline vty 0 4\nlogin local\ntransport input telnet",
+        check: [["username","tech12"],["secret","load1key"],["login local"],["transport input telnet"]] },
+      { id: 2, text: "Configure NACL ISP_ACL on R1: deny RFC1918 class A (10.0.0.0/8) and class B (172.16.0.0/12), permit all other", device: "R1",
+        hint: "ip access-list extended ISP_ACL\ndeny ip 10.0.0.0 0.255.255.255 any\ndeny ip 172.16.0.0 0.15.255.255 any\npermit ip any any",
+        check: [["ip access-list extended","isp_acl"],["deny ip","10.0.0.0","0.255.255.255"],["deny ip","172.16.0.0","0.15.255.255"],["permit ip any any"]] },
+      { id: 3, text: "Configure DAI on Sw2: VLAN 5, validate dst-mac, src-mac, and IP", device: "Sw2",
+        hint: "ip arp inspection vlan 5\nip arp inspection validate dst-mac src-mac ip",
+        check: [["ip arp inspection vlan","5"],["ip arp inspection validate"]] }
     ]
   },
   {
-    id: 22, title: "IEEE Trunks & 802.3ad LACP", category: "Switching",
+    id: 22, title: "Trunk + LACP with Native VLAN", category: "Switching",
     source: "Q275",
     devices: [
       { name: "Sw1", type: "switch", hostname: "Sw1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } },
       { name: "Sw2", type: "switch", hostname: "Sw2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" } } }
     ],
-    topology: `Sw1(E0/0,E0/1)──(E0/0,E0/1)Sw2\n │                          │\nPC1(VLAN110)             PC2(VLAN110)`,
+    topology: `Sw1(E0/0,E0/1)══Po20══(E0/0,E0/1)Sw2\n PC1(VLAN110)                  PC2(VLAN110)\n Native VLAN 99`,
     tasks: [
-      { id: 1, text: "Configure trunks on E0/0,E0/1 (dot1q). Native VLAN 99. Allow only VLAN 110 and native.", device: "Sw1", hint: "interface Ethernet0/0\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk native vlan 99\nswitchport trunk allowed vlan 99,110" },
-      { id: 2, text: "Configure 802.3ad link aggregation: port-channel 20, both negotiate (LACP active)", device: "Sw1", hint: "interface Ethernet0/0\nchannel-group 20 mode active\ninterface Ethernet0/1\nchannel-group 20 mode active" }
+      { id: 1, text: "Configure 802.1q trunks on E0/0+E0/1 (both switches), native VLAN 99, allow only VLAN 110 and 99", device: "Sw1",
+        hint: "interface Ethernet0/0\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk native vlan 99\nswitchport trunk allowed vlan 99,110\ninterface Ethernet0/1\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk native vlan 99\nswitchport trunk allowed vlan 99,110",
+        check: [["switchport trunk encapsulation dot1q"],["switchport mode trunk"],["switchport trunk native vlan","99"],["switchport trunk allowed vlan","99","110"]] },
+      { id: 2, text: "Configure LACP port-channel 20 on E0/0+E0/1, both sides active (IEEE 802.3ad)", device: "Sw1",
+        hint: "interface Ethernet0/0\nchannel-group 20 mode active\ninterface Ethernet0/1\nchannel-group 20 mode active\n\n! Same on Sw2",
+        check: [["channel-group","20","mode active"]] }
     ]
   },
   {
-    id: 23, title: "Voice/Data VLANs & LLDP (v2)", category: "Switching",
+    id: 23, title: "VLANs, Access Ports & LLDP", category: "Switching",
     source: "Q276-Sim1",
     devices: [
       { name: "Sw1", type: "switch", hostname: "Sw1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" }, "Ethernet0/3": { status: "up" } } },
       { name: "Sw2", type: "switch", hostname: "Sw2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" }, "Ethernet0/3": { status: "up" } } }
     ],
-    topology: `Sw1(E0/0)────(E0/0)Sw2\n │E0/1-3        │E0/1-3\n Phones+PCs    Phones+PCs`,
+    topology: `Sw1(E0/0)──(E0/0)Sw2\n │E0/1,E0/2,E0/3      │E0/1,E0/2,E0/3\n PCs per VLAN          PCs per VLAN`,
     tasks: [
-      { id: 1, text: "Configure VLANs with naming as indicated in topology on both switches", device: "Sw1", hint: "vlan <id>\nname <name>" },
-      { id: 2, text: "Assign VLANs to interfaces, set as non-trunking access ports", device: "Sw1", hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan <data>\nswitchport voice vlan <voice>" },
-      { id: 3, text: "Configure L2 vendor-neutral discovery (LLDP) on E0/0 including native VLAN", device: "Sw1", hint: "lldp run\ninterface Ethernet0/0\nlldp transmit\nlldp receive" }
+      { id: 1, text: "Configure VLANs with the naming as indicated in the topology on both Sw1 and Sw2", device: "Sw1",
+        hint: "vlan <id>\nname <name>\n! Repeat for each required VLAN",
+        check: [["vlan"],["name"]] },
+      { id: 2, text: "Assign VLANs to interfaces as access ports (non-trunking, single VLAN per port)", device: "Sw1",
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan <id>\n! Repeat for E0/2, E0/3",
+        check: [["switchport mode access"],["switchport access vlan"]] },
+      { id: 3, text: "Enable LLDP (vendor-neutral L2 discovery) on E0/0 of both switches, including native VLAN advertisement", device: "Sw1",
+        hint: "lldp run\ninterface Ethernet0/0\nlldp transmit\nlldp receive",
+        check: [["lldp"]] }
     ]
   },
   {
-    id: 24, title: "OSPF without Network Statements", category: "Routing",
+    id: 24, title: "OSPF Without Network Statements", category: "Routing",
     source: "Q276-Sim2",
     devices: [
-      { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/0": { ip: "10.0.12.1/24", status: "up" }, "Ethernet0/1": { ip: "10.0.13.1/24", status: "up" } } }
+      { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/0": { ip: "10.10.12.1/30", status: "up" }, "Ethernet0/1": { ip: "10.10.13.1/30", status: "up" } } },
+      { name: "R2", type: "router", hostname: "R2", interfaces: { "Ethernet0/0": { ip: "10.10.12.2/30", status: "up" } } },
+      { name: "R3", type: "router", hostname: "R3", interfaces: { "Ethernet0/0": { ip: "10.10.13.3/30", status: "up" } } }
     ],
-    topology: `R2 ──(E0/0)── R1 ──(E0/1)── R3\n      10.0.12.0/24   10.0.13.0/24`,
+    topology: `R1 ──E0/0── R2\n │E0/1\n R3\n Area 0, no network statements on R1`,
     tasks: [
-      { id: 1, text: "Configure OSPF process 33 with router-id using E0/1 IP", device: "R1", hint: "router ospf 33\nrouter-id 10.0.13.1" },
-      { id: 2, text: "Establish OSPF adjacencies without network statements (use ip ospf on interfaces)", device: "R1", hint: "interface Ethernet0/0\nip ospf 33 area 0\ninterface Ethernet0/1\nip ospf 33 area 0" },
-      { id: 3, text: "Configure R1 to always become DR (priority 255)", device: "R1", hint: "interface Ethernet0/0\nip ospf priority 255\ninterface Ethernet0/1\nip ospf priority 255" }
+      { id: 1, text: "Configure OSPF on R1: process ID 33, router-id from E0/1 IP (10.10.13.1)", device: "R1",
+        hint: "router ospf 33\nrouter-id 10.10.13.1",
+        check: [["router ospf","33"],["router-id","10.10.13.1"]] },
+      { id: 2, text: "Enable OSPF on R1 interfaces using 'ip ospf <pid> area 0' (no network statements). Set priority 255 for DR.", device: "R1",
+        hint: "interface Ethernet0/0\nip ospf 33 area 0\nip ospf priority 255\ninterface Ethernet0/1\nip ospf 33 area 0\nip ospf priority 255",
+        check: [["ip ospf 33 area 0"],["ip ospf priority","255"]] }
     ]
   },
   {
-    id: 25, title: "IPv4 /28 & IPv6 /64 Configuration", category: "IP Addressing",
+    id: 25, title: "IPv4/IPv6 Addressing", category: "IP Services",
     source: "QLab212-Sim1",
     devices: [
       { name: "R1", type: "router", hostname: "R1", interfaces: { "Ethernet0/1": { status: "up" } } },
       { name: "R2", type: "router", hostname: "R2", interfaces: { "Ethernet0/1": { status: "up" } } }
     ],
-    topology: `R1 (E0/1) ─── (E0/1) R2\nIPv4: 192.168.180.16/28 (2nd /28)\nIPv6: 2001:db8:acca::/64 (1st /64)`,
+    topology: `R1(E0/1) ──── (E0/1)R2\n IPv4: 192.168.180.16/28 (2nd /28)\n IPv6: 2001:db8:acca::/64 (1st /64)`,
     tasks: [
-      { id: 1, text: "Configure 2nd /28 from 192.168.180.0/24 (= 192.168.180.16/28). R1 = first usable (.17)", device: "R1", hint: "interface Ethernet0/1\nip address 192.168.180.17 255.255.255.240" },
-      { id: 2, text: "R2 gets last usable IP of the /28 (.30)", device: "R2", hint: "interface Ethernet0/1\nip address 192.168.180.30 255.255.255.240" },
-      { id: 3, text: "Configure IPv6 /64 from 2001:db8:acca::/48 (first /64 = 2001:db8:acca::/64)", device: "R1", hint: "interface Ethernet0/1\nipv6 address 2001:db8:acca::1/64" }
+      { id: 1, text: "Configure R1 E0/1 with first usable IP from 2nd /28 subnet (192.168.180.16/28 → 192.168.180.17)", device: "R1",
+        hint: "interface Ethernet0/1\nip address 192.168.180.17 255.255.255.240\nno shutdown",
+        check: [["ip address","192.168.180.17","255.255.255.240"]] },
+      { id: 2, text: "Configure R2 E0/1 with last usable IP from 2nd /28 subnet (192.168.180.30)", device: "R2",
+        hint: "interface Ethernet0/1\nip address 192.168.180.30 255.255.255.240\nno shutdown",
+        check: [["ip address","192.168.180.30","255.255.255.240"]] },
+      { id: 3, text: "Configure IPv6 on R1 and R2 E0/1 using 2001:db8:acca::/64 with addresses from topology", device: "R1",
+        hint: "interface Ethernet0/1\nipv6 address 2001:db8:acca::1/64\nno shutdown\n\n! On R2:\nipv6 address 2001:db8:acca::2/64",
+        check: [["ipv6 address","2001:db8:acca"]] }
     ]
   },
   {
@@ -387,9 +565,15 @@ const LABS = [
     ],
     topology: `PC1(VLAN202)──Sw1(E0/2)──(E0/2)Sw2(E0/3)──(E0/3)Sw3──PC3(VLAN303)\n                  │E0/0                │E0/1\n                 PC2(VLAN202)         PC4(VLAN303)`,
     tasks: [
-      { id: 1, text: "Configure VLAN 202 (MARKETING) and VLAN 303 (FINANCE) on designated switches. Assign access ports.", device: "Sw1", hint: "vlan 202\nname MARKETING\ninterface Ethernet0/0\nswitchport mode access\nswitchport access vlan 202" },
-      { id: 2, text: "Configure E0/2 on Sw1 and Sw2 as 802.1q trunks allowing only required VLANs", device: "Sw1", hint: "interface Ethernet0/2\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 202,303" },
-      { id: 3, text: "Configure E0/3 on Sw2 and Sw3 as 802.1q trunks allowing only required VLANs", device: "Sw2", hint: "interface Ethernet0/3\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 202,303" }
+      { id: 1, text: "Configure VLAN 202 (MARKETING) and VLAN 303 (FINANCE) on designated switches. Assign access ports to PC interfaces.", device: "Sw1",
+        hint: "! On Sw1:\nvlan 202\nname MARKETING\ninterface Ethernet0/0\nswitchport mode access\nswitchport access vlan 202\ninterface Ethernet0/1\nswitchport mode access\nswitchport access vlan 202\n\n! On Sw3:\nvlan 303\nname FINANCE\ninterface Ethernet0/0\nswitchport mode access\nswitchport access vlan 303\ninterface Ethernet0/1\nswitchport mode access\nswitchport access vlan 303",
+        check: [["vlan","202"],["name","marketing"],["switchport mode access"],["switchport access vlan","202"]] },
+      { id: 2, text: "Configure E0/2 on Sw1 and Sw2 as 802.1q trunks allowing only VLANs 202 and 303", device: "Sw1",
+        hint: "interface Ethernet0/2\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 202,303",
+        check: [["switchport trunk encapsulation dot1q"],["switchport mode trunk"],["switchport trunk allowed vlan","202","303"]] },
+      { id: 3, text: "Configure E0/3 on Sw2 and Sw3 as 802.1q trunks allowing only VLANs 202 and 303", device: "Sw2",
+        hint: "interface Ethernet0/3\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nswitchport trunk allowed vlan 202,303",
+        check: [["switchport trunk encapsulation dot1q"],["switchport mode trunk"],["switchport trunk allowed vlan","202","303"]] }
     ]
   },
   {
@@ -401,12 +585,19 @@ const LABS = [
     ],
     topology: `PC1 ── Sw101 ── Sw102(E0/0) ── PC2\n       VLAN 100/200`,
     tasks: [
-      { id: 1, text: "Configure local account on Sw101: support/max2learn, exec mode, telnet vty 0-4", device: "Sw101", hint: "username support secret max2learn\nline vty 0 4\nlogin local\ntransport input telnet" },
-      { id: 2, text: "Configure NACL ENT_ACL on Sw101: Block PC2 ping to PC1, allow PC2 telnet to Sw101, deny other telnet from VLAN200, allow rest", device: "Sw101", hint: "ip access-list extended ENT_ACL\ndeny icmp host <PC2-IP> host <PC1-IP>\npermit tcp host <PC2-IP> host <Sw101-IP> eq 23\ndeny tcp any any eq 23\npermit ip any any" },
-      { id: 3, text: "Configure port security on Sw102 E0/0: max 4 MACs, restrict mode, dynamic learning", device: "Sw102", hint: "interface Ethernet0/0\nswitchport port-security\nswitchport port-security maximum 4\nswitchport port-security violation restrict" }
+      { id: 1, text: "Configure local account on Sw101: username support, password max2learn, exec privilege. Telnet on VTY 0-4.", device: "Sw101",
+        hint: "username support secret max2learn\nline vty 0 4\nlogin local\ntransport input telnet",
+        check: [["username","support"],["secret","max2learn"],["login local"],["transport input telnet"]] },
+      { id: 2, text: "Configure NACL ENT_ACL on Sw101: deny PC2 ping to PC1, allow PC2 telnet to Sw101, deny other telnet from VLAN200, permit rest", device: "Sw101",
+        hint: "ip access-list extended ENT_ACL\ndeny icmp host <PC2-IP> host <PC1-IP>\npermit tcp host <PC2-IP> host <Sw101-IP> eq 23\ndeny tcp any any eq 23\npermit ip any any",
+        check: [["ip access-list extended","ent_acl"],["deny icmp"],["permit tcp","eq 23"],["deny tcp","eq 23"],["permit ip any any"]] },
+      { id: 3, text: "Configure port security on Sw102 E0/0: max 4 MACs, restrict mode (drop unknown, no shutdown), dynamic learning", device: "Sw102",
+        hint: "interface Ethernet0/0\nswitchport port-security\nswitchport port-security maximum 4\nswitchport port-security violation restrict",
+        check: [["switchport port-security"],["switchport port-security maximum","4"],["switchport port-security violation restrict"]] }
     ]
   }
 ];
+
 
 
 
@@ -1457,92 +1648,41 @@ function getHelp(state) {
 }
 
 // ─── TASK VERIFICATION ENGINE ───────────────────────────────────────────────
-function normalizeForCheck(s) {
-  return s.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
 function checkTaskCompletion(task, deviceStates) {
-  const deviceName = task.device;
-  const ds = deviceStates[deviceName];
-  if (!ds) return false;
+  const ds = deviceStates[task.device];
+  if (!ds || !task.check) return false;
 
-  const hint = task.hint;
-  // Parse hint into individual commands
-  const hintLines = hint.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("(") && !l.startsWith("//"));
-
-  // Get all commands entered on this device with context
-  const allCmds = ds.allCommands.filter(c => c.device === deviceName);
-  const allCmdLower = allCmds.map(c => c.lower);
-
-  // Also build a flat list of all config commands (from structured config)
-  const allConfigFlat = [
+  // Collect ALL commands entered on this device (lowercased)
+  const allCmds = [
     ...ds.globalCmds,
     ...Object.values(ds.interfaceCfg).flat(),
     ...Object.values(ds.lineCfg).flat(),
     ...Object.values(ds.routerCfg).flat(),
     ...Object.values(ds.aclCfg).flat(),
     ...Object.values(ds.dhcpCfg).flat(),
+    ...(ds.allCommands || []).map(c => c.lower),
   ];
 
-  // For each hint line, check if a matching command was entered
-  let matchCount = 0;
-  for (const hintLine of hintLines) {
-    const normalized = normalizeForCheck(hintLine);
-
-    // Skip pure numeric lines (like RSA key size "1024")
-    if (/^\d+$/.test(normalized)) { matchCount++; continue; }
-
-    // Skip lines with placeholder syntax
-    if (normalized.includes("<") && normalized.includes(">")) { matchCount++; continue; }
-    if (normalized === "?") { matchCount++; continue; }
-
-    // Extract key tokens from hint line
-    const tokens = normalized.split(" ").filter(t => t.length > 0);
-
-    // Check if any entered command matches this hint line
-    const found = allCmdLower.some(enteredCmd => {
-      return matchHintToCommand(normalized, enteredCmd);
-    }) || allConfigFlat.some(cfgCmd => {
-      return matchHintToCommand(normalized, cfgCmd);
+  // For each required check pattern, find if any command matches ALL keywords
+  for (const keywords of task.check) {
+    const found = allCmds.some(cmd => {
+      return keywords.every(kw => cmd.includes(kw.toLowerCase()));
     });
-
-    if (found) matchCount++;
+    if (!found) return false;
   }
-
-  return matchCount >= hintLines.length;
+  return true;
 }
 
-function matchHintToCommand(hintNorm, cmdNorm) {
-  // Exact match
-  if (hintNorm === cmdNorm) return true;
-
-  // Normalize both
-  const h = hintNorm.replace(/\s+/g, " ").trim();
-  const c = cmdNorm.replace(/\s+/g, " ").trim();
-
-  if (h === c) return true;
-
-  // Check if all significant tokens from hint exist in command
-  const hTokens = h.split(" ");
-  const cTokens = c.split(" ");
-
-  // For short commands (1-3 tokens), require near-exact match
-  if (hTokens.length <= 3) {
-    // Allow interface name variations
-    const hNormIf = h.replace(/ethernet/g, "ethernet").replace(/gigabitethernet/g, "gigabitethernet");
-    const cNormIf = c.replace(/ethernet/g, "ethernet").replace(/gigabitethernet/g, "gigabitethernet");
-    return hNormIf === cNormIf;
-  }
-
-  // For longer commands, check if all critical tokens match
-  let matchedTokens = 0;
-  for (const ht of hTokens) {
-    if (cTokens.includes(ht)) matchedTokens++;
-  }
-
-  // Require 80%+ token match
-  return matchedTokens >= Math.ceil(hTokens.length * 0.8);
+function getTaskResults(lab, deviceStates) {
+  if (!lab) return {};
+  const results = {};
+  lab.tasks.forEach(task => {
+    const key = task.id;
+    results[key] = checkTaskCompletion(task, deviceStates);
+  });
+  return results;
 }
+
 
 // ─── THEME CONFIG ────────────────────────────────────────────────────────────
 const THEMES = {
@@ -1588,6 +1728,8 @@ export default function CiscoLabSimulator() {
   const [darkMode, setDarkMode] = useState(true);
   const [toasts, setToasts] = useState([]);
   const [showDesc, setShowDesc] = useState(true);
+  const [checkResults, setCheckResults] = useState(null);
+  const [checkAnimation, setCheckAnimation] = useState(false);
   const [recentlyCompleted, setRecentlyCompleted] = useState({});
   const terminalRef = useRef(null);
   const inputRef = useRef(null);
@@ -1604,6 +1746,7 @@ export default function CiscoLabSimulator() {
       setTerminalHistory([{ type: "system", text: `\n  ═══════════════════════════════════════════════\n  Cisco IOS Simulator — Lab ${lab.id}: ${lab.title}\n  ═══════════════════════════════════════════════\n\n  Type 'enable' then 'configure terminal' to begin.\n  Type '?' for help. Use 'do <cmd>' from config mode.\n` }]);
       setShowHint({});
       setShowDesc(true);
+      setCheckResults(null);
     }
   }, [selectedLab]);
 
@@ -1612,24 +1755,7 @@ export default function CiscoLabSimulator() {
 
   const currentState = selectedDevice ? deviceStates[selectedDevice] : null;
 
-  // ─── Auto-verify tasks after device state changes ───
-  useEffect(() => {
-    if (!lab || Object.keys(deviceStates).length === 0) return;
-    lab.tasks.forEach(task => {
-      const key = `${lab.id}-${task.id}`;
-      if (completedTasks[key]) return; // already complete
-      const passed = checkTaskCompletion(task, deviceStates);
-      if (passed) {
-        setCompletedTasks(prev => ({ ...prev, [key]: true }));
-        setRecentlyCompleted(prev => ({ ...prev, [key]: true }));
-        // Toast
-        setToasts(prev => [...prev, { id: Date.now(), text: `✓ Task ${task.id} complete: ${task.text.substring(0, 50)}...`, taskKey: key }]);
-        // Clear recent highlight after 3s
-        setTimeout(() => setRecentlyCompleted(prev => { const n = { ...prev }; delete n[key]; return n; }), 3000);
-      }
-    });
-  }, [deviceStates, lab]);
-
+  
   // Remove toasts after 4s
   useEffect(() => {
     if (toasts.length === 0) return;
@@ -1643,6 +1769,29 @@ export default function CiscoLabSimulator() {
     setCurrentInput("");
     setCmdHistoryIdx(-1);
   }, []);
+
+  const handleCheckWork = useCallback(() => {
+    if (!lab) return;
+    setCheckAnimation(true);
+    setTimeout(() => {
+      const results = getTaskResults(lab, deviceStates);
+      setCheckResults(results);
+      // Update completedTasks for tasks that pass
+      const newCompleted = { ...completedTasks };
+      let newToasts = [];
+      lab.tasks.forEach(task => {
+        const key = `${lab.id}-${task.id}`;
+        if (results[task.id] && !newCompleted[key]) {
+          newCompleted[key] = true;
+          newToasts.push({ id: Date.now() + task.id, text: `Task ${task.id} passed!` });
+        }
+      });
+      setCompletedTasks(newCompleted);
+      if (newToasts.length > 0) setToasts(prev => [...prev, ...newToasts]);
+      setCheckAnimation(false);
+    }, 600);
+  }, [lab, deviceStates, completedTasks]);
+
 
   const handleCommand = useCallback(() => {
     if (!currentState || !currentInput.trim()) return;
@@ -1928,6 +2077,39 @@ export default function CiscoLabSimulator() {
         <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
           {sidebarTab === "tasks" && (
             <div>
+              {/* Check My Work Button */}
+              <div style={{ marginBottom: 12, display: "flex", gap: 8, alignItems: "center" }}>
+                <button onClick={handleCheckWork}
+                  style={{ flex: 1, padding: "10px 16px", borderRadius: 8, border: `2px solid ${T.accent}`, background: checkAnimation ? T.accent : "transparent", color: checkAnimation ? (darkMode ? "#0a0e17" : "#fff") : T.accent, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit", transition: "all 0.3s", letterSpacing: 0.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  {checkAnimation ? "⏳ Checking..." : "🔍 Check My Work"}
+                </button>
+                {checkResults && (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: Object.values(checkResults).every(Boolean) ? T.accent : T.warn }}>
+                    {Object.values(checkResults).filter(Boolean).length}/{Object.values(checkResults).length}
+                  </span>
+                )}
+              </div>
+              {checkResults && (
+                <div style={{ marginBottom: 12, background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Verification Results</div>
+                  {lab.tasks.map((task) => {
+                    const passed = checkResults[task.id];
+                    return (
+                      <div key={task.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12 }}>
+                        <span style={{ fontSize: 16, minWidth: 20, textAlign: "center" }}>{passed ? "✅" : "❌"}</span>
+                        <span style={{ color: passed ? T.successText : T.warn }}>Task {task.id}: {task.device}</span>
+                        {!passed && <span style={{ fontSize: 10, color: T.textMuted, marginLeft: "auto" }}>needs work</span>}
+                      </div>
+                    );
+                  })}
+                  {Object.values(checkResults).every(Boolean) && (
+                    <div style={{ marginTop: 8, padding: "8px 12px", background: T.successBg, borderRadius: 6, border: `1px solid ${T.successBorder}`, textAlign: "center", fontSize: 13, fontWeight: 700, color: T.successText }}>
+                      🎉 All tasks complete! Lab passed!
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Lab Instructions */}
               {LAB_DESCRIPTIONS[lab.id] && (
                 <div style={{ marginBottom: 16, background: T.card, borderRadius: 8, border: `1px solid ${T.accentAlt}33`, overflow: "hidden" }}>
@@ -1949,12 +2131,13 @@ export default function CiscoLabSimulator() {
               {lab.tasks.map((task, idx) => {
                 const key = `${lab.id}-${task.id}`;
                 const isComplete = completedTasks[key];
+                const checkPassed = checkResults ? checkResults[task.id] : null;
                 const isRecent = recentlyCompleted[key];
                 const hintVisible = showHint[key];
                 return (
                   <div key={task.id} style={{
                     marginBottom: 12, background: isComplete ? T.successBg : T.card, borderRadius: 8,
-                    border: `1px solid ${isComplete ? T.successBorder : T.border}`,
+                    border: `1px solid ${checkPassed === true ? T.successBorder : checkPassed === false ? '#ef4444' : isComplete ? T.successBorder : T.border}`,
                     overflow: "hidden", transition: "all 0.4s ease-out",
                     animation: isRecent ? "taskPulse 1s ease-out 2" : "none",
                   }}>
@@ -1976,7 +2159,8 @@ export default function CiscoLabSimulator() {
                           <span style={{ color: T.accentAlt }}>Task {idx + 1}</span>
                           <span style={{ color: T.textMuted }}>•</span>
                           <span style={{ color: T.switchText }}>{task.device}</span>
-                          {isComplete && <span style={{ color: T.successText, fontSize: 10, fontWeight: 600, background: T.successBg, padding: "1px 6px", borderRadius: 4, border: `1px solid ${T.successBorder}` }}>VERIFIED ✓</span>}
+                          {checkPassed === true && <span style={{ color: T.successText, fontSize: 10, fontWeight: 600, background: T.successBg, padding: "1px 6px", borderRadius: 4, border: `1px solid ${T.successBorder}` }}>PASS ✓</span>}
+                          {checkPassed === false && <span style={{ color: "#ef4444", fontSize: 10, fontWeight: 600, background: darkMode ? "#1c0a0a" : "#fef2f2", padding: "1px 6px", borderRadius: 4, border: "1px solid #ef4444" }}>FAIL ✗</span>}
                         </div>
                         <div style={{ fontSize: 12, color: isComplete ? T.textMuted : T.text, lineHeight: 1.4, textDecoration: isComplete ? "line-through" : "none" }}>{task.text}</div>
                       </div>
