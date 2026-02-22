@@ -25,6 +25,15 @@ const DARK = {
   purple: "#a78bfa", terminal: "#0c1018",
 };
 
+const LIGHT = {
+  bg: "#f8fafc", card: "#ffffff", cardAlt: "#f1f5f9", border: "#e2e8f0",
+  borderLight: "#cbd5e1", text: "#1e293b", textMuted: "#64748b", textDim: "#94a3b8",
+  accent: "#0284c7", accentDark: "#0369a1", accentGlow: "rgba(2,132,199,0.06)",
+  green: "#16a34a", greenDark: "#15803d", greenGlow: "rgba(22,163,74,0.08)",
+  red: "#dc2626", redDark: "#991b1b", orange: "#d97706", orangeGlow: "rgba(217,119,6,0.06)",
+  purple: "#7c3aed", terminal: "#f1f5f9",
+};
+
 const fontMono = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace";
 const fontSans = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
 
@@ -65,20 +74,22 @@ const TEMPLATES = {
   },
 };
 
-// ─── STYLES ─────────────────────────────────────────────────────────────────
-const S = {
-  input: { width: "100%", padding: "8px 12px", background: DARK.terminal, color: DARK.text, border: `1px solid ${DARK.border}`, borderRadius: 6, fontFamily: fontMono, fontSize: 13, outline: "none", boxSizing: "border-box", transition: "border 0.2s" },
-  inputFocus: { borderColor: DARK.accent },
-  textarea: { width: "100%", padding: "10px 12px", background: DARK.terminal, color: DARK.text, border: `1px solid ${DARK.border}`, borderRadius: 6, fontFamily: fontMono, fontSize: 12, outline: "none", boxSizing: "border-box", resize: "vertical", lineHeight: 1.5, minHeight: 60 },
-  label: { display: "block", fontSize: 11, fontWeight: 600, color: DARK.textMuted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: fontSans },
-  btn: (color = DARK.accent) => ({ padding: "8px 16px", background: `${color}20`, color, border: `1px solid ${color}50`, borderRadius: 6, cursor: "pointer", fontFamily: fontSans, fontSize: 12, fontWeight: 600, transition: "all 0.2s" }),
-  btnSmall: (color = DARK.accent) => ({ padding: "4px 10px", background: `${color}15`, color, border: `1px solid ${color}40`, borderRadius: 4, cursor: "pointer", fontFamily: fontSans, fontSize: 11, fontWeight: 600, transition: "all 0.2s" }),
-  card: { background: DARK.card, border: `1px solid ${DARK.border}`, borderRadius: 10, padding: 20, marginBottom: 16 },
-  section: { fontSize: 14, fontWeight: 700, color: DARK.accent, marginBottom: 12, fontFamily: fontSans, display: "flex", alignItems: "center", gap: 8 },
-  select: { padding: "8px 12px", background: DARK.terminal, color: DARK.text, border: `1px solid ${DARK.border}`, borderRadius: 6, fontFamily: fontSans, fontSize: 13, outline: "none", cursor: "pointer" },
-  badge: (color) => ({ display: "inline-block", padding: "2px 8px", fontSize: 10, fontWeight: 700, borderRadius: 10, background: `${color}20`, color, fontFamily: fontSans }),
-  tag: { display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", background: `${DARK.accent}15`, color: DARK.accent, borderRadius: 4, fontSize: 11, fontFamily: fontMono },
-};
+// ─── STYLES (computed per theme) ─────────────────────────────────────────────
+function makeStyles(T) {
+  return {
+    input: { width: "100%", padding: "8px 12px", background: T.terminal, color: T.text, border: `1px solid ${T.border}`, borderRadius: 6, fontFamily: fontMono, fontSize: 13, outline: "none", boxSizing: "border-box", transition: "border 0.2s" },
+    inputFocus: { borderColor: T.accent },
+    textarea: { width: "100%", padding: "10px 12px", background: T.terminal, color: T.text, border: `1px solid ${T.border}`, borderRadius: 6, fontFamily: fontMono, fontSize: 12, outline: "none", boxSizing: "border-box", resize: "vertical", lineHeight: 1.5, minHeight: 60 },
+    label: { display: "block", fontSize: 11, fontWeight: 600, color: T.textMuted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em", fontFamily: fontSans },
+    btn: (color = T.accent) => ({ padding: "8px 16px", background: `${color}20`, color, border: `1px solid ${color}50`, borderRadius: 6, cursor: "pointer", fontFamily: fontSans, fontSize: 12, fontWeight: 600, transition: "all 0.2s" }),
+    btnSmall: (color = T.accent) => ({ padding: "4px 10px", background: `${color}15`, color, border: `1px solid ${color}40`, borderRadius: 4, cursor: "pointer", fontFamily: fontSans, fontSize: 11, fontWeight: 600, transition: "all 0.2s" }),
+    card: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: 20, marginBottom: 16 },
+    section: { fontSize: 14, fontWeight: 700, color: T.accent, marginBottom: 12, fontFamily: fontSans, display: "flex", alignItems: "center", gap: 8 },
+    select: { padding: "8px 12px", background: T.terminal, color: T.text, border: `1px solid ${T.border}`, borderRadius: 6, fontFamily: fontSans, fontSize: 13, outline: "none", cursor: "pointer" },
+    badge: (color) => ({ display: "inline-block", padding: "2px 8px", fontSize: 10, fontWeight: 700, borderRadius: 10, background: `${color}20`, color, fontFamily: fontSans }),
+    tag: { display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", background: `${T.accent}15`, color: T.accent, borderRadius: 4, fontSize: 11, fontFamily: fontMono },
+  };
+}
 
 // ─── HELPER: parse check pattern text into arrays ───────────────────────────
 function parseCheckPattern(raw) {
@@ -151,21 +162,31 @@ function simulatorToEditor(simLab) {
 }
 
 // ─── FOCUSABLE INPUT ────────────────────────────────────────────────────────
-function FInput({ style, ...props }) {
+function FInput({ style, inputStyle, focusStyle, ...props }) {
   const [focused, setFocused] = useState(false);
-  return <input {...props} style={{ ...S.input, ...style, ...(focused ? S.inputFocus : {}) }}
+  return <input {...props} style={{ ...inputStyle, ...style, ...(focused ? focusStyle : {}) }}
     onFocus={e => { setFocused(true); props.onFocus?.(e); }}
     onBlur={e => { setFocused(false); props.onBlur?.(e); }} />;
 }
-function FTextarea({ style, ...props }) {
+function FTextarea({ style, inputStyle, focusStyle, ...props }) {
   const [focused, setFocused] = useState(false);
-  return <textarea {...props} style={{ ...S.textarea, ...style, ...(focused ? S.inputFocus : {}) }}
+  return <textarea {...props} style={{ ...inputStyle, ...style, ...(focused ? focusStyle : {}) }}
     onFocus={e => { setFocused(true); props.onFocus?.(e); }}
     onBlur={e => { setFocused(false); props.onBlur?.(e); }} />;
 }
 
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
 export default function LabEditor() {
+  const [darkMode, setDarkMode] = useState(() => {
+    try { return localStorage.getItem("ccna_editor_dark") !== "false"; } catch { return true; }
+  });
+  const T = darkMode ? DARK : LIGHT;
+  const S = makeStyles(T);
+
+  useEffect(() => {
+    try { localStorage.setItem("ccna_editor_dark", darkMode); } catch {}
+  }, [darkMode]);
+
   const [lab, setLab] = useState(JSON.parse(JSON.stringify(TEMPLATES.blank)));
   const [labId, setLabId] = useState(28);
   const [showJson, setShowJson] = useState(false);
@@ -568,7 +589,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
 
   // ─── RENDER ────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "100vh", background: DARK.bg, color: DARK.text, fontFamily: fontSans }}>
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: fontSans }}>
       {/* Google Fonts */}
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
@@ -576,7 +597,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
       {notification && (
         <div style={{
           position: "fixed", top: 20, right: 20, zIndex: 9999, padding: "12px 20px",
-          background: notification.type === "error" ? DARK.redDark : DARK.greenDark,
+          background: notification.type === "error" ? T.redDark : T.greenDark,
           color: "white", borderRadius: 8, fontSize: 13, fontWeight: 600,
           boxShadow: "0 4px 20px rgba(0,0,0,0.4)", animation: "slideIn 0.3s ease",
         }}>
@@ -585,26 +606,30 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
       )}
 
       {/* HEADER */}
-      <div style={{ borderBottom: `1px solid ${DARK.border}`, padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", background: DARK.card }}>
+      <div style={{ borderBottom: `1px solid ${T.border}`, padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", background: T.card }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 22 }}>🔧</span>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: DARK.accent, letterSpacing: "-0.02em" }}>CCNA Lab Editor</div>
-            <div style={{ fontSize: 11, color: DARK.textDim }}>Skapa och redigera labbar för Cisco Lab Simulator</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: T.accent, letterSpacing: "-0.02em" }}>CCNA Lab Editor</div>
+            <div style={{ fontSize: 11, color: T.textDim }}>Skapa och redigera labbar för Cisco Lab Simulator</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={() => setDarkMode(p => !p)}
+            style={{ padding: "6px 12px", borderRadius: 20, border: `1px solid ${T.border}`, background: T.card, color: T.textMuted, cursor: "pointer", fontSize: 11, fontFamily: fontSans, transition: "all 0.2s" }}>
+            {darkMode ? "☀️ Light" : "🌙 Dark"}
+          </button>
           <button style={{
-            ...S.btn(DARK.purple),
-            background: showAi ? `${DARK.purple}30` : `${DARK.purple}15`,
-            boxShadow: aiLoading ? `0 0 12px ${DARK.purple}40` : "none",
+            ...S.btn(T.purple),
+            background: showAi ? `${T.purple}30` : `${T.purple}15`,
+            boxShadow: aiLoading ? `0 0 12px ${T.purple}40` : "none",
             animation: aiLoading ? "pulse 1.5s infinite" : "none",
           }} onClick={() => setShowAi(!showAi)}>
-            🤖 {aiLoading ? "Genererar..." : "AI Generator"}
+            {aiLoading ? "⏳ Genererar..." : showAi ? "✏️ Manual Editor" : "🤖 AI Generator"}
           </button>
-          <button style={S.btn(DARK.green)} onClick={handleSaveLab}>💾 Spara lokalt</button>
-          <button style={S.btn(DARK.orange)} onClick={() => setShowImport(!showImport)}>📥 Importera JSON</button>
-          <button style={S.btn(DARK.accent)} onClick={() => setShowJson(!showJson)}>
+          <button style={S.btn(T.green)} onClick={handleSaveLab}>💾 Spara lokalt</button>
+          <button style={S.btn(T.orange)} onClick={() => setShowImport(!showImport)}>📥 Importera JSON</button>
+          <button style={S.btn(T.accent)} onClick={() => setShowJson(!showJson)}>
             {showJson ? "✏️ Editor" : "📄 Visa JSON"}
           </button>
         </div>
@@ -612,31 +637,31 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
 
       <div style={{ display: "flex", maxWidth: 1400, margin: "0 auto", gap: 0, minHeight: "calc(100vh - 60px)" }}>
         {/* ─── LEFT SIDEBAR: Saved Labs ─── */}
-        <div style={{ width: 240, borderRight: `1px solid ${DARK.border}`, padding: 16, background: DARK.card, flexShrink: 0, overflowY: "auto" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: DARK.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>📚 Mallar</div>
+        <div style={{ width: 240, borderRight: `1px solid ${T.border}`, padding: 16, background: T.card, flexShrink: 0, overflowY: "auto" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>📚 Mallar</div>
           {[["routing", "🛣️ Routing"], ["switching", "🔀 Switching"], ["security", "🔒 Security"], ["blank", "📄 Blank"]].map(([k, label]) => (
             <button key={k} onClick={() => handleTemplate(k)}
-              style={{ ...S.btnSmall(DARK.textMuted), width: "100%", marginBottom: 6, textAlign: "left", padding: "8px 10px" }}>
+              style={{ ...S.btnSmall(T.textMuted), width: "100%", marginBottom: 6, textAlign: "left", padding: "8px 10px" }}>
               {label}
             </button>
           ))}
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: DARK.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", margin: "20px 0 12px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", margin: "20px 0 12px" }}>
             💾 Sparade ({savedLabs.length})
           </div>
-          {savedLabs.length === 0 && <div style={{ fontSize: 11, color: DARK.textDim, padding: "8px 0" }}>Inga sparade labbar</div>}
+          {savedLabs.length === 0 && <div style={{ fontSize: 11, color: T.textDim, padding: "8px 0" }}>Inga sparade labbar</div>}
           {savedLabs.map(sl => (
             <div key={sl.id} style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
               <button onClick={() => handleLoadLab(sl)}
-                style={{ ...S.btnSmall(DARK.accent), flex: 1, textAlign: "left", padding: "6px 8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                style={{ ...S.btnSmall(T.accent), flex: 1, textAlign: "left", padding: "6px 8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 #{sl.id} {sl.title || "Untitled"}
               </button>
               <button onClick={() => handleDeleteSaved(sl.id)}
-                style={{ ...S.btnSmall(DARK.red), padding: "6px 8px", flexShrink: 0 }}>✕</button>
+                style={{ ...S.btnSmall(T.red), padding: "6px 8px", flexShrink: 0 }}>✕</button>
             </div>
           ))}
           {savedLabs.length > 0 && (
-            <button onClick={handleExportAll} style={{ ...S.btn(DARK.purple), width: "100%", marginTop: 12 }}>
+            <button onClick={handleExportAll} style={{ ...S.btn(T.purple), width: "100%", marginTop: 12 }}>
               📦 Exportera alla
             </button>
           )}
@@ -645,22 +670,22 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
         {/* ─── MAIN EDITOR ─── */}
         <div style={{ flex: 1, padding: 24, overflowY: "auto", maxHeight: "calc(100vh - 60px)" }}>
           {showImport && (
-            <div style={{ ...S.card, borderColor: DARK.orange }}>
+            <div style={{ ...S.card, borderColor: T.orange }}>
               <div style={S.section}>📥 Importera lab från JSON</div>
-              <FTextarea value={importText} onChange={e => setImportText(e.target.value)}
+              <FTextarea inputStyle={S.textarea} focusStyle={S.inputFocus} value={importText} onChange={e => setImportText(e.target.value)}
                 placeholder='Klistra in JSON-objekt här, t.ex. { "id": 28, "title": "My Lab", ... }'
                 style={{ minHeight: 120, marginBottom: 12 }} />
               <div style={{ display: "flex", gap: 8 }}>
-                <button style={S.btn(DARK.green)} onClick={handleImport}>✅ Importera</button>
-                <button style={S.btn(DARK.textMuted)} onClick={() => setShowImport(false)}>Avbryt</button>
+                <button style={S.btn(T.green)} onClick={handleImport}>✅ Importera</button>
+                <button style={S.btn(T.textMuted)} onClick={() => setShowImport(false)}>Avbryt</button>
               </div>
             </div>
           )}
 
           {/* ─── AI GENERATOR PANEL ─── */}
           {showAi && (
-            <div style={{ ...S.card, borderColor: `${DARK.purple}60`, background: `linear-gradient(135deg, ${DARK.card} 0%, ${DARK.cardAlt} 100%)` }}>
-              <div style={{ ...S.section, color: DARK.purple }}>🤖 AI-driven Labbgenerator</div>
+            <div style={{ ...S.card, borderColor: `${T.purple}60`, background: `linear-gradient(135deg, ${T.card} 0%, ${T.cardAlt} 100%)` }}>
+              <div style={{ ...S.section, color: T.purple }}>🤖 AI-driven Labbgenerator</div>
 
               {/* Provider + API Key */}
               <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 12, marginBottom: 16 }}>
@@ -676,11 +701,11 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
                   <label style={S.label}>
                     API-nyckel ({AI_PROVIDERS[aiProvider].name})
                     <button onClick={() => setShowApiKey(!showApiKey)}
-                      style={{ marginLeft: 8, background: "none", border: "none", color: DARK.accent, cursor: "pointer", fontSize: 10 }}>
+                      style={{ marginLeft: 8, background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: 10 }}>
                       {showApiKey ? "🙈 Dölj" : "👁️ Visa"}
                     </button>
                   </label>
-                  <FInput
+                  <FInput inputStyle={S.input} focusStyle={S.inputFocus}
                     type={showApiKey ? "text" : "password"}
                     value={aiApiKey}
                     onChange={e => setAiApiKey(e.target.value)}
@@ -693,7 +718,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
               {/* Prompt */}
               <div style={{ marginBottom: 12 }}>
                 <label style={S.label}>📝 Beskriv labben du vill skapa</label>
-                <FTextarea
+                <FTextarea inputStyle={S.textarea} focusStyle={S.inputFocus}
                   value={aiPrompt}
                   onChange={e => setAiPrompt(e.target.value)}
                   placeholder="T.ex: Skapa en labb för OSPF-prioritering med tre routrar där studenterna ska konfigurera router-id, nätverksbeskrivningar och verifiera adjacencies"
@@ -709,9 +734,9 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
                     <button key={i} onClick={() => setAiPrompt(p)}
                       style={{
                         padding: "5px 10px", fontSize: 10, fontFamily: fontSans,
-                        background: aiPrompt === p ? `${DARK.purple}25` : `${DARK.terminal}`,
-                        color: aiPrompt === p ? DARK.purple : DARK.textDim,
-                        border: `1px solid ${aiPrompt === p ? DARK.purple + "50" : DARK.border}`,
+                        background: aiPrompt === p ? `${T.purple}25` : `${T.terminal}`,
+                        color: aiPrompt === p ? T.purple : T.textDim,
+                        border: `1px solid ${aiPrompt === p ? T.purple + "50" : T.border}`,
                         borderRadius: 4, cursor: "pointer", textAlign: "left",
                         maxWidth: "100%", transition: "all 0.2s",
                       }}>
@@ -727,7 +752,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
                   onClick={aiGenerate}
                   disabled={aiLoading}
                   style={{
-                    ...S.btn(DARK.purple),
+                    ...S.btn(T.purple),
                     padding: "10px 24px", fontSize: 13,
                     opacity: aiLoading ? 0.6 : 1,
                     cursor: aiLoading ? "not-allowed" : "pointer",
@@ -735,7 +760,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
                   {aiLoading ? "⏳ Genererar..." : "🚀 Generera Lab"}
                 </button>
                 {aiLoading && (
-                  <span style={{ fontSize: 11, color: DARK.textDim }}>
+                  <span style={{ fontSize: 11, color: T.textDim }}>
                     AI:n skapar topologi, enheter, tasks och verifiering...
                   </span>
                 )}
@@ -744,26 +769,26 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
               {/* Error */}
               {aiError && (
                 <div style={{
-                  background: `${DARK.red}15`, border: `1px solid ${DARK.red}40`,
+                  background: `${T.red}15`, border: `1px solid ${T.red}40`,
                   borderRadius: 6, padding: "10px 14px", marginBottom: 12,
                 }}>
-                  <div style={{ fontSize: 11, color: DARK.red, fontWeight: 600 }}>❌ {aiError}</div>
+                  <div style={{ fontSize: 11, color: T.red, fontWeight: 600 }}>❌ {aiError}</div>
                 </div>
               )}
 
               {/* Log */}
               {aiLog.length > 0 && (
-                <div style={{ background: DARK.terminal, borderRadius: 6, padding: 10, maxHeight: 120, overflowY: "auto" }}>
+                <div style={{ background: T.terminal, borderRadius: 6, padding: 10, maxHeight: 120, overflowY: "auto" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, color: DARK.textDim, textTransform: "uppercase", fontWeight: 700 }}>Logg</span>
-                    <button onClick={() => setAiLog([])} style={{ ...S.btnSmall(DARK.textDim), padding: "2px 6px" }}>Rensa</button>
+                    <span style={{ fontSize: 10, color: T.textDim, textTransform: "uppercase", fontWeight: 700 }}>Logg</span>
+                    <button onClick={() => setAiLog([])} style={{ ...S.btnSmall(T.textDim), padding: "2px 6px" }}>Rensa</button>
                   </div>
                   {aiLog.map((entry, i) => (
                     <div key={i} style={{
                       fontSize: 10, fontFamily: fontMono, marginBottom: 2,
-                      color: entry.type === "error" ? DARK.red : entry.type === "success" ? DARK.green : DARK.textMuted,
+                      color: entry.type === "error" ? T.red : entry.type === "success" ? T.green : T.textMuted,
                     }}>
-                      <span style={{ color: DARK.textDim }}>[{entry.time}]</span> {entry.msg}
+                      <span style={{ color: T.textDim }}>[{entry.time}]</span> {entry.msg}
                     </div>
                   ))}
                 </div>
@@ -771,19 +796,19 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
 
               {/* Info box */}
               <div style={{
-                marginTop: 12, padding: "10px 14px", background: `${DARK.purple}08`,
-                border: `1px solid ${DARK.purple}20`, borderRadius: 6,
+                marginTop: 12, padding: "10px 14px", background: `${T.purple}08`,
+                border: `1px solid ${T.purple}20`, borderRadius: 6,
               }}>
-                <div style={{ fontSize: 10, color: DARK.textDim, lineHeight: 1.5 }}>
-                  <strong style={{ color: DARK.purple }}>Hur det fungerar:</strong> AI:n genererar en komplett lab med topologi, enheter, interfaces,
+                <div style={{ fontSize: 10, color: T.textDim, lineHeight: 1.5 }}>
+                  <strong style={{ color: T.purple }}>Hur det fungerar:</strong> AI:n genererar en komplett lab med topologi, enheter, interfaces,
                   task-beskrivningar, lösningskommandon (hints) och check-patterns för automatisk verifiering.
                   Resultatet laddas direkt in i editorn där du kan finjustera innan du sparar.
                   <br /><br />
-                  <strong style={{ color: DARK.purple }}>API-nycklar:</strong> Nycklar lagras lokalt i din webbläsare och skickas direkt till respektive API.
+                  <strong style={{ color: T.purple }}>API-nycklar:</strong> Nycklar lagras lokalt i din webbläsare och skickas direkt till respektive API.
                   Hämta din nyckel från{" "}
-                  <span style={{ color: DARK.accent }}>console.anthropic.com</span>,{" "}
-                  <span style={{ color: DARK.accent }}>platform.openai.com</span> eller{" "}
-                  <span style={{ color: DARK.accent }}>aistudio.google.com</span>.
+                  <span style={{ color: T.accent }}>console.anthropic.com</span>,{" "}
+                  <span style={{ color: T.accent }}>platform.openai.com</span> eller{" "}
+                  <span style={{ color: T.accent }}>aistudio.google.com</span>.
                 </div>
               </div>
             </div>
@@ -794,20 +819,20 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
             <div style={S.card}>
               <div style={{ ...S.section, justifyContent: "space-between" }}>
                 <span>📄 Genererad JSON</span>
-                <button style={S.btn(copied ? DARK.green : DARK.accent)} onClick={handleCopyJson}>
+                <button style={S.btn(copied ? T.green : T.accent)} onClick={handleCopyJson}>
                   {copied ? "✅ Kopierad!" : "📋 Kopiera"}
                 </button>
               </div>
               {issues.length > 0 && (
-                <div style={{ background: `${DARK.red}15`, border: `1px solid ${DARK.red}40`, borderRadius: 6, padding: "10px 14px", marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: DARK.red, marginBottom: 4 }}>⚠️ Varningar:</div>
-                  {issues.map((iss, i) => <div key={i} style={{ fontSize: 11, color: DARK.red, opacity: 0.8 }}>• {iss}</div>)}
+                <div style={{ background: `${T.red}15`, border: `1px solid ${T.red}40`, borderRadius: 6, padding: "10px 14px", marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: T.red, marginBottom: 4 }}>⚠️ Varningar:</div>
+                  {issues.map((iss, i) => <div key={i} style={{ fontSize: 11, color: T.red, opacity: 0.8 }}>• {iss}</div>)}
                 </div>
               )}
               <textarea ref={jsonRef} value={getOutputJson()} readOnly
                 style={{ ...S.textarea, minHeight: 500, fontSize: 11, lineHeight: 1.4 }} />
-              <div style={{ marginTop: 12, fontSize: 11, color: DARK.textDim }}>
-                💡 Kopiera och klistra in i <code style={{ color: DARK.accent }}>LABS</code>-arrayen i <code style={{ color: DARK.accent }}>CiscoLabSimulator.jsx</code>
+              <div style={{ marginTop: 12, fontSize: 11, color: T.textDim }}>
+                💡 Kopiera och klistra in i <code style={{ color: T.accent }}>LABS</code>-arrayen i <code style={{ color: T.accent }}>CiscoLabSimulator.jsx</code>
               </div>
             </div>
           ) : (
@@ -819,15 +844,15 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 100px 120px", gap: 12 }}>
                   <div>
                     <label style={S.label}>Titel</label>
-                    <FInput value={lab.title} onChange={e => updateLab("title", e.target.value)} placeholder="t.ex. Static Routes & OSPF" />
+                    <FInput inputStyle={S.input} focusStyle={S.inputFocus} value={lab.title} onChange={e => updateLab("title", e.target.value)} placeholder="t.ex. Static Routes & OSPF" />
                   </div>
                   <div>
                     <label style={S.label}>Källa / Referens</label>
-                    <FInput value={lab.source} onChange={e => updateLab("source", e.target.value)} placeholder="t.ex. Q214s" />
+                    <FInput inputStyle={S.input} focusStyle={S.inputFocus} value={lab.source} onChange={e => updateLab("source", e.target.value)} placeholder="t.ex. Q214s" />
                   </div>
                   <div>
                     <label style={S.label}>Lab ID</label>
-                    <FInput type="number" value={labId} onChange={e => setLabId(parseInt(e.target.value) || 1)} style={{ textAlign: "center" }} />
+                    <FInput inputStyle={S.input} focusStyle={S.inputFocus} type="number" value={labId} onChange={e => setLabId(parseInt(e.target.value) || 1)} style={{ textAlign: "center" }} />
                   </div>
                   <div>
                     <label style={S.label}>Kategori</label>
@@ -842,7 +867,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
               <div style={S.card}>
                 <div style={S.section}>🗺️ Topologi</div>
                 <label style={S.label}>ASCII-topologi (visas i simulatorn)</label>
-                <FTextarea value={lab.topology} onChange={e => updateLab("topology", e.target.value)}
+                <FTextarea inputStyle={S.textarea} focusStyle={S.inputFocus} value={lab.topology} onChange={e => updateLab("topology", e.target.value)}
                   placeholder="R1(E0/0) ── 10.0.0.0/24 ── (E0/0)R2" style={{ minHeight: 80, whiteSpace: "pre" }} />
               </div>
 
@@ -850,21 +875,21 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
               <div style={S.card}>
                 <div style={{ ...S.section, justifyContent: "space-between" }}>
                   <span>🖥️ Enheter ({lab.devices.length})</span>
-                  <button style={S.btnSmall(DARK.green)} onClick={addDevice}>+ Lägg till enhet</button>
+                  <button style={S.btnSmall(T.green)} onClick={addDevice}>+ Lägg till enhet</button>
                 </div>
 
                 {lab.devices.map((dev, di) => (
-                  <div key={di} style={{ background: DARK.cardAlt, border: `1px solid ${DARK.borderLight}`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
+                  <div key={di} style={{ background: T.cardAlt, border: `1px solid ${T.borderLight}`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
                       <span style={{ fontSize: 18 }}>{dev.type === "switch" ? "🔀" : "🛣️"}</span>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 120px", gap: 8, flex: 1 }}>
                         <div>
                           <label style={S.label}>Namn</label>
-                          <FInput value={dev.name} onChange={e => updateDevice(di, "name", e.target.value)} />
+                          <FInput inputStyle={S.input} focusStyle={S.inputFocus} value={dev.name} onChange={e => updateDevice(di, "name", e.target.value)} />
                         </div>
                         <div>
                           <label style={S.label}>Hostname</label>
-                          <FInput value={dev.hostname} onChange={e => updateDevice(di, "hostname", e.target.value)} />
+                          <FInput inputStyle={S.input} focusStyle={S.inputFocus} value={dev.hostname} onChange={e => updateDevice(di, "hostname", e.target.value)} />
                         </div>
                         <div>
                           <label style={S.label}>Typ</label>
@@ -873,14 +898,14 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
                           </select>
                         </div>
                       </div>
-                      <button style={S.btnSmall(DARK.red)} onClick={() => removeDevice(di)} title="Ta bort enhet">✕</button>
+                      <button style={S.btnSmall(T.red)} onClick={() => removeDevice(di)} title="Ta bort enhet">✕</button>
                     </div>
 
                     {/* Interfaces */}
                     <div style={{ marginLeft: 30 }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: DARK.textDim, textTransform: "uppercase" }}>Interface</span>
-                        <button style={S.btnSmall(DARK.accent)} onClick={() => addInterface(di)}>+ Interface</button>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: T.textDim, textTransform: "uppercase" }}>Interface</span>
+                        <button style={S.btnSmall(T.accent)} onClick={() => addInterface(di)}>+ Interface</button>
                       </div>
                       {dev.interfaces.map((iface, ii) => (
                         <div key={ii} style={{ display: "grid", gridTemplateColumns: "180px 1fr 80px 28px", gap: 6, marginBottom: 4, alignItems: "center" }}>
@@ -889,14 +914,14 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
                             {COMMON_INTERFACES.map(ci => <option key={ci} value={ci}>{ci}</option>)}
                             {!COMMON_INTERFACES.includes(iface.name) && <option value={iface.name}>{iface.name}</option>}
                           </select>
-                          <FInput value={iface.ip} onChange={e => updateInterface(di, ii, "ip", e.target.value)}
+                          <FInput inputStyle={S.input} focusStyle={S.inputFocus} value={iface.ip} onChange={e => updateInterface(di, ii, "ip", e.target.value)}
                             placeholder="IP-adress (t.ex. 10.0.0.1/24)" style={{ fontSize: 11, padding: "5px 8px" }} />
                           <select value={iface.status} onChange={e => updateInterface(di, ii, "status", e.target.value)}
                             style={{ ...S.select, fontSize: 10, padding: "5px 6px" }}>
                             <option value="up">up</option>
                             <option value="down">down</option>
                           </select>
-                          <button style={{ ...S.btnSmall(DARK.red), padding: "3px 6px" }} onClick={() => removeInterface(di, ii)}>✕</button>
+                          <button style={{ ...S.btnSmall(T.red), padding: "3px 6px" }} onClick={() => removeInterface(di, ii)}>✕</button>
                         </div>
                       ))}
                     </div>
@@ -908,42 +933,42 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
               <div style={S.card}>
                 <div style={{ ...S.section, justifyContent: "space-between" }}>
                   <span>✅ Tasks ({lab.tasks.length})</span>
-                  <button style={S.btnSmall(DARK.green)} onClick={addTask}>+ Lägg till task</button>
+                  <button style={S.btnSmall(T.green)} onClick={addTask}>+ Lägg till task</button>
                 </div>
 
                 {lab.tasks.map((task, ti) => (
-                  <div key={ti} style={{ background: DARK.cardAlt, border: `1px solid ${DARK.borderLight}`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
+                  <div key={ti} style={{ background: T.cardAlt, border: `1px solid ${T.borderLight}`, borderRadius: 8, padding: 16, marginBottom: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <span style={S.badge(DARK.accent)}>Task {task.id}</span>
+                      <span style={S.badge(T.accent)}>Task {task.id}</span>
                       <select value={task.device} onChange={e => updateTask(ti, "device", e.target.value)} style={{ ...S.select, fontSize: 11, padding: "4px 8px" }}>
                         {deviceNames.map(d => <option key={d} value={d}>{d}</option>)}
                       </select>
                       <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-                        <button style={S.btnSmall(DARK.textMuted)} onClick={() => moveTask(ti, -1)} disabled={ti === 0}>↑</button>
-                        <button style={S.btnSmall(DARK.textMuted)} onClick={() => moveTask(ti, 1)} disabled={ti === lab.tasks.length - 1}>↓</button>
-                        <button style={S.btnSmall(DARK.red)} onClick={() => removeTask(ti)}>✕</button>
+                        <button style={S.btnSmall(T.textMuted)} onClick={() => moveTask(ti, -1)} disabled={ti === 0}>↑</button>
+                        <button style={S.btnSmall(T.textMuted)} onClick={() => moveTask(ti, 1)} disabled={ti === lab.tasks.length - 1}>↓</button>
+                        <button style={S.btnSmall(T.red)} onClick={() => removeTask(ti)}>✕</button>
                       </div>
                     </div>
 
                     <div style={{ marginBottom: 10 }}>
                       <label style={S.label}>Uppgiftsbeskrivning</label>
-                      <FTextarea value={task.text} onChange={e => updateTask(ti, "text", e.target.value)}
+                      <FTextarea inputStyle={S.textarea} focusStyle={S.inputFocus} value={task.text} onChange={e => updateTask(ti, "text", e.target.value)}
                         placeholder="Beskriv vad studenten ska göra..." style={{ minHeight: 50 }} />
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                       <div>
                         <label style={S.label}>💡 Hint (lösningskommandon)</label>
-                        <FTextarea value={task.hint} onChange={e => updateTask(ti, "hint", e.target.value)}
+                        <FTextarea inputStyle={S.textarea} focusStyle={S.inputFocus} value={task.hint} onChange={e => updateTask(ti, "hint", e.target.value)}
                           placeholder={"ip route 192.168.0.0 255.255.255.0 10.10.31.1\nip route 0.0.0.0 0.0.0.0 10.10.13.3"}
                           style={{ minHeight: 70 }} />
                       </div>
                       <div>
                         <label style={S.label}>🔍 Check-pattern (verifiering)</label>
-                        <FTextarea value={task.checkRaw} onChange={e => updateTask(ti, "checkRaw", e.target.value)}
+                        <FTextarea inputStyle={S.textarea} focusStyle={S.inputFocus} value={task.checkRaw} onChange={e => updateTask(ti, "checkRaw", e.target.value)}
                           placeholder={"ip route, 192.168.0.0, 255.255.255.0, 10.10.31.1\nswitchport mode trunk"}
                           style={{ minHeight: 70 }} />
-                        <div style={{ fontSize: 10, color: DARK.textDim, marginTop: 4 }}>
+                        <div style={{ fontSize: 10, color: T.textDim, marginTop: 4 }}>
                           En rad per krav. Nyckelord komma-separerade. Alla rader måste matcha.
                         </div>
                       </div>
@@ -951,11 +976,11 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
 
                     {/* Preview parsed check */}
                     {task.checkRaw.trim() && (
-                      <div style={{ marginTop: 8, padding: "8px 10px", background: DARK.terminal, borderRadius: 4 }}>
-                        <div style={{ fontSize: 10, color: DARK.textDim, marginBottom: 4 }}>Parsed check:</div>
+                      <div style={{ marginTop: 8, padding: "8px 10px", background: T.terminal, borderRadius: 4 }}>
+                        <div style={{ fontSize: 10, color: T.textDim, marginBottom: 4 }}>Parsed check:</div>
                         {parseCheckPattern(task.checkRaw).map((kws, ci) => (
                           <div key={ci} style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 3 }}>
-                            <span style={{ fontSize: 10, color: DARK.green, marginRight: 4 }}>✓</span>
+                            <span style={{ fontSize: 10, color: T.green, marginRight: 4 }}>✓</span>
                             {kws.map((kw, ki) => <span key={ki} style={S.tag}>{kw}</span>)}
                           </div>
                         ))}
@@ -964,7 +989,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
 
                     {/* Auto-generate check from hint */}
                     {task.hint.trim() && !task.checkRaw.trim() && (
-                      <button style={{ ...S.btnSmall(DARK.orange), marginTop: 8 }}
+                      <button style={{ ...S.btnSmall(T.orange), marginTop: 8 }}
                         onClick={() => {
                           const lines = task.hint.split("\n").filter(l => l.trim() && !l.trim().startsWith("!") && !l.trim().startsWith("On "));
                           const checkLines = lines.map(l => {
@@ -982,10 +1007,10 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
 
               {/* Validation Summary */}
               {issues.length > 0 && (
-                <div style={{ ...S.card, borderColor: `${DARK.orange}60` }}>
-                  <div style={{ ...S.section, color: DARK.orange }}>⚠️ Validering</div>
+                <div style={{ ...S.card, borderColor: `${T.orange}60` }}>
+                  <div style={{ ...S.section, color: T.orange }}>⚠️ Validering</div>
                   {issues.map((iss, i) => (
-                    <div key={i} style={{ fontSize: 12, color: DARK.orange, marginBottom: 4, paddingLeft: 12 }}>• {iss}</div>
+                    <div key={i} style={{ fontSize: 12, color: T.orange, marginBottom: 4, paddingLeft: 12 }}>• {iss}</div>
                   ))}
                 </div>
               )}
@@ -994,57 +1019,57 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
         </div>
 
         {/* ─── RIGHT SIDEBAR: Quick Preview ─── */}
-        <div style={{ width: 280, borderLeft: `1px solid ${DARK.border}`, padding: 16, background: DARK.card, flexShrink: 0, overflowY: "auto", maxHeight: "calc(100vh - 60px)" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: DARK.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>👁️ Förhandsvisning</div>
+        <div style={{ width: 280, borderLeft: `1px solid ${T.border}`, padding: 16, background: T.card, flexShrink: 0, overflowY: "auto", maxHeight: "calc(100vh - 60px)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>👁️ Förhandsvisning</div>
 
-          <div style={{ background: DARK.cardAlt, borderRadius: 8, padding: 12, marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: DARK.text, marginBottom: 4 }}>{lab.title || "—"}</div>
+          <div style={{ background: T.cardAlt, borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4 }}>{lab.title || "—"}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <span style={S.badge(DARK.accent)}>{lab.category}</span>
-              <span style={S.badge(DARK.textMuted)}>ID: {labId}</span>
-              {lab.source && <span style={S.badge(DARK.purple)}>{lab.source}</span>}
+              <span style={S.badge(T.accent)}>{lab.category}</span>
+              <span style={S.badge(T.textMuted)}>ID: {labId}</span>
+              {lab.source && <span style={S.badge(T.purple)}>{lab.source}</span>}
             </div>
           </div>
 
           {/* Devices preview */}
-          <div style={{ fontSize: 10, fontWeight: 700, color: DARK.textDim, marginBottom: 6, textTransform: "uppercase" }}>Enheter</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.textDim, marginBottom: 6, textTransform: "uppercase" }}>Enheter</div>
           {lab.devices.map((d, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", background: DARK.terminal, borderRadius: 4, marginBottom: 4, fontSize: 11 }}>
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", background: T.terminal, borderRadius: 4, marginBottom: 4, fontSize: 11 }}>
               <span>{d.type === "switch" ? "🔀" : "🛣️"}</span>
-              <span style={{ color: DARK.accent, fontWeight: 600 }}>{d.name}</span>
-              <span style={{ color: DARK.textDim }}>({d.interfaces.length} intf)</span>
+              <span style={{ color: T.accent, fontWeight: 600 }}>{d.name}</span>
+              <span style={{ color: T.textDim }}>({d.interfaces.length} intf)</span>
             </div>
           ))}
 
           {/* Tasks preview */}
-          <div style={{ fontSize: 10, fontWeight: 700, color: DARK.textDim, marginBottom: 6, marginTop: 12, textTransform: "uppercase" }}>Tasks</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.textDim, marginBottom: 6, marginTop: 12, textTransform: "uppercase" }}>Tasks</div>
           {lab.tasks.map((t, i) => (
-            <div key={i} style={{ display: "flex", gap: 6, padding: "6px 8px", background: DARK.terminal, borderRadius: 4, marginBottom: 4, fontSize: 11 }}>
-              <span style={S.badge(t.checkRaw.trim() ? DARK.green : DARK.red)}>{t.id}</span>
-              <span style={{ color: DARK.textMuted, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div key={i} style={{ display: "flex", gap: 6, padding: "6px 8px", background: T.terminal, borderRadius: 4, marginBottom: 4, fontSize: 11 }}>
+              <span style={S.badge(t.checkRaw.trim() ? T.green : T.red)}>{t.id}</span>
+              <span style={{ color: T.textMuted, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {t.text || "—"}
               </span>
-              <span style={{ color: DARK.accent, fontWeight: 600, flexShrink: 0 }}>{t.device}</span>
+              <span style={{ color: T.accent, fontWeight: 600, flexShrink: 0 }}>{t.device}</span>
             </div>
           ))}
 
           {/* Topology preview */}
           {lab.topology && (
             <>
-              <div style={{ fontSize: 10, fontWeight: 700, color: DARK.textDim, marginBottom: 6, marginTop: 12, textTransform: "uppercase" }}>Topologi</div>
-              <pre style={{ background: DARK.terminal, padding: 10, borderRadius: 6, fontSize: 9, fontFamily: fontMono, color: DARK.textMuted, whiteSpace: "pre-wrap", overflow: "auto", maxHeight: 150 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: T.textDim, marginBottom: 6, marginTop: 12, textTransform: "uppercase" }}>Topologi</div>
+              <pre style={{ background: T.terminal, padding: 10, borderRadius: 6, fontSize: 9, fontFamily: fontMono, color: T.textMuted, whiteSpace: "pre-wrap", overflow: "auto", maxHeight: 150 }}>
                 {lab.topology}
               </pre>
             </>
           )}
 
           {/* Stats */}
-          <div style={{ marginTop: 16, padding: "10px 12px", background: DARK.accentGlow, borderRadius: 6, border: `1px solid ${DARK.accent}30` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: DARK.accent, marginBottom: 6 }}>📊 Stats</div>
-            <div style={{ fontSize: 11, color: DARK.textMuted }}>
+          <div style={{ marginTop: 16, padding: "10px 12px", background: T.accentGlow, borderRadius: 6, border: `1px solid ${T.accent}30` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.accent, marginBottom: 6 }}>📊 Stats</div>
+            <div style={{ fontSize: 11, color: T.textMuted }}>
               {lab.devices.length} enheter • {lab.tasks.length} tasks • {lab.tasks.filter(t => t.checkRaw.trim()).length} verifierbara
             </div>
-            <div style={{ fontSize: 11, color: DARK.textMuted }}>
+            <div style={{ fontSize: 11, color: T.textMuted }}>
               {lab.tasks.reduce((acc, t) => acc + parseCheckPattern(t.checkRaw).length, 0)} check-patterns totalt
             </div>
           </div>
@@ -1062,9 +1087,9 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
         }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: ${DARK.bg}; }
-        ::-webkit-scrollbar-thumb { background: ${DARK.border}; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: ${DARK.borderLight}; }
+        ::-webkit-scrollbar-track { background: ${T.bg}; }
+        ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: ${T.borderLight}; }
         button:hover { filter: brightness(1.2); }
         select { appearance: auto; }
       `}</style>

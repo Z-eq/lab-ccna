@@ -2407,6 +2407,34 @@ export default function CiscoLabSimulator() {
   const [showHint, setShowHint] = useState({});
   const [completedTasks, setCompletedTasks] = useState({});
   const [sidebarTab, setSidebarTab] = useState("tasks");
+  const [sidebarWidth, setSidebarWidth] = useState(400);
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(400);
+
+  // Resizable sidebar drag handlers
+  const handleDragStart = useCallback((e) => {
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = sidebarWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev) => {
+      if (!isDragging.current) return;
+      const delta = ev.clientX - dragStartX.current;
+      const newW = Math.max(250, Math.min(800, dragStartWidth.current + delta));
+      setSidebarWidth(newW);
+    };
+    const onUp = () => {
+      isDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [sidebarWidth]);
   const [filterCategory, setFilterCategory] = useState("All");
   const [showLabList, setShowLabList] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
@@ -2675,7 +2703,7 @@ export default function CiscoLabSimulator() {
   // ─── LAB LIST VIEW ───
   if (showLabList || !selectedLab) {
     return (
-      <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", transition: "background 0.3s, color 0.3s" }}>
+      <div style={{ minHeight: "100vh", maxHeight: "100vh", overflow: "auto", background: T.bg, color: T.text, fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", transition: "background 0.3s, color 0.3s" }}>
         <style>{styleTag}</style>
         <div style={{ background: T.headerGrad, borderBottom: `1px solid ${T.borderAccent}`, padding: "24px 32px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16, maxWidth: 1400, margin: "0 auto" }}>
@@ -2754,8 +2782,8 @@ export default function CiscoLabSimulator() {
         ))}
       </div>
 
-      {/* Left Sidebar */}
-      <div style={{ width: 400, minWidth: 400, background: T.bgAlt, borderRight: `1px solid ${T.borderAccent}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      {/* Left Sidebar - Resizable */}
+      <div style={{ width: sidebarWidth, minWidth: 250, maxWidth: 800, background: T.bgAlt, borderRight: "none", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "14px 16px", borderBottom: `1px solid ${T.border}`, background: T.card }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <button onClick={() => setShowLabList(true)} style={{ background: "none", border: `1px solid ${T.border}`, color: T.textMuted, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>← Labs</button>
@@ -2936,6 +2964,20 @@ export default function CiscoLabSimulator() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Drag Handle */}
+      <div
+        onMouseDown={handleDragStart}
+        style={{
+          width: 6, cursor: "col-resize", background: T.borderAccent,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "background 0.2s", flexShrink: 0,
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = T.accent + "60"}
+        onMouseLeave={e => e.currentTarget.style.background = T.borderAccent}
+      >
+        <div style={{ width: 2, height: 40, borderRadius: 1, background: T.textMuted + "40" }} />
       </div>
 
       {/* Right Side - Terminal (ALWAYS DARK) */}
