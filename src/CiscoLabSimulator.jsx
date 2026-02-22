@@ -900,20 +900,28 @@ function normalizeInterface(input) {
 
 // Parse an interface range like "Ethernet0/2 - 3" → ["Ethernet0/2", "Ethernet0/3"]
 function parseInterfaceRange(input) {
-  const parts = input.split(/\s*-\s*/);
-  if (parts.length !== 2) return [normalizeInterface(input)];
-  const base = normalizeInterface(parts[0].trim());
-  const endNum = parts[1].trim();
-  const match = base.match(/^(.+\/)(\d+)$/);
-  if (!match) return [base];
-  const prefix = match[1];
-  const startNum = parseInt(match[2]);
-  const end = parseInt(endNum);
+  // Handle comma-separated groups: "e0/0, e0/2-3" or "e0/0 - 1, e0/3"
+  const groups = input.split(/\s*,\s*/);
   const result = [];
-  for (let i = startNum; i <= end; i++) {
-    result.push(`${prefix}${i}`);
+  for (const group of groups) {
+    const dashParts = group.split(/\s*-\s*/);
+    if (dashParts.length === 2) {
+      const base = normalizeInterface(dashParts[0].trim());
+      const endNum = dashParts[1].trim();
+      const match = base.match(/^(.+\/)(\d+)$/);
+      if (match) {
+        const prefix = match[1];
+        const startNum = parseInt(match[2]);
+        const end = parseInt(endNum);
+        for (let i = startNum; i <= end; i++) result.push(`${prefix}${i}`);
+      } else {
+        result.push(base);
+      }
+    } else {
+      result.push(normalizeInterface(group.trim()));
+    }
   }
-  return result;
+  return result.length ? result : [normalizeInterface(input)];
 }
 
 // ─── CONFIG HELPERS: dedup + no-command support ────────────────────────────
@@ -1053,6 +1061,21 @@ function processCommand(input, state) {
     const positiveParts = isNo ? parts.slice(1) : parts;
     const positiveCmd = isNo ? lc.replace(/^no\s+/, "") : lc;
     const pFirst = positiveParts[0];
+
+    // ─── Incomplete command detection ───
+    if (!isNo) {
+      const incompletes = ["ip route", "ip address", "ip nat", "ip dhcp", "ipv6 route", "switchport", "channel-group"];
+      for (const ic of incompletes) {
+        if (lc === ic) return { output: "% Incomplete command.", state };
+      }
+    }
+
+    // ─── Spanning-tree global commands ───
+    if (pFirst === "spanning-tree") {
+      if (isNo) { state.globalCmds = cfgRemove(state.globalCmds, lc); }
+      else { state.globalCmds = cfgAdd(state.globalCmds, lc); }
+      return { output: "", state };
+    }
 
     // Interface
     if ((pFirst === "interface" || pFirst === "int") && !isNo) {
@@ -1300,6 +1323,16 @@ function processCommand(input, state) {
     const positiveParts = isNo ? parts.slice(1) : parts;
     const pFirst = positiveParts[0];
 
+    // ─── Incomplete command detection ───
+    if (!isNo) {
+      const incompletes = ["switchport mode", "switchport access", "switchport trunk", "switchport voice",
+        "ip address", "ipv6 address", "channel-group", "switchport port-security maximum",
+        "switchport port-security violation"];
+      for (const ic of incompletes) {
+        if (lc === ic) return { output: "% Incomplete command.", state };
+      }
+    }
+
     // Navigate to another interface
     if ((first === "interface" || first === "int") && !isNo) {
       const rest = rawCmd.replace(/^(interface|int)\s+/i, "");
@@ -1385,6 +1418,14 @@ function processCommand(input, state) {
         return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
       }
       return { output: `Creating a port-channel interface Port-channel${positiveParts[1]}`, state: { ...state, interfaceCfg: newIfCfg } };
+    }
+    // spanning-tree portfast / bpduguard (stored in interfaceCfg via cfgAdd above)
+    if (pFirst === "spanning-tree") {
+      return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
+    }
+    // switchport nonegotiate (stored in interfaceCfg via cfgAdd above)
+    if (positiveCmd === "switchport nonegotiate") {
+      return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
     }
     return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
   }
@@ -1490,6 +1531,36 @@ function doTraceroute(parts, state) {
   };
 }
 
+// ─── INTERFACE STATE HELPERS ─────────────────────────────────────────────────
+function getPortInfo(iface, cmds) {
+  const info = { mode: "access", accessVlan: "1", voiceVlan: null, nativeVlan: "1", allowedVlans: "ALL",
+    encap: "negotiate", trunk: false, nonegotiate: false, portfast: false, bpduguard: false,
+    channelGroup: null, channelMode: null, cdp: null, lldpTx: null, lldpRx: null };
+  for (const c of cmds) {
+    if (c.startsWith("switchport mode ")) info.mode = c.replace("switchport mode ", "");
+    if (c.startsWith("switchport access vlan ")) info.accessVlan = c.replace("switchport access vlan ", "");
+    if (c.startsWith("switchport voice vlan ")) info.voiceVlan = c.replace("switchport voice vlan ", "");
+    if (c.startsWith("switchport trunk native vlan ")) info.nativeVlan = c.replace("switchport trunk native vlan ", "");
+    if (c.startsWith("switchport trunk allowed vlan ")) info.allowedVlans = c.replace("switchport trunk allowed vlan ", "");
+    if (c.startsWith("switchport trunk encapsulation ")) info.encap = c.replace("switchport trunk encapsulation ", "");
+    if (c === "switchport nonegotiate") info.nonegotiate = true;
+    if (c === "spanning-tree portfast") info.portfast = true;
+    if (c === "spanning-tree bpduguard enable") info.bpduguard = true;
+    if (c.startsWith("channel-group ")) {
+      const m = c.match(/channel-group\s+(\d+)\s+mode\s+(\S+)/);
+      if (m) { info.channelGroup = m[1]; info.channelMode = m[2]; }
+    }
+    if (c === "no cdp enable") info.cdp = false;
+    if (c === "cdp enable") info.cdp = true;
+    if (c === "lldp transmit") info.lldpTx = true;
+    if (c === "no lldp transmit") info.lldpTx = false;
+    if (c === "lldp receive") info.lldpRx = true;
+    if (c === "no lldp receive") info.lldpRx = false;
+  }
+  info.trunk = info.mode === "trunk";
+  return info;
+}
+
 function processShow(parts, state) {
   const sub = parts.slice(1).join(" ");
 
@@ -1497,6 +1568,98 @@ function processShow(parts, state) {
   if (sub.startsWith("run") || sub.startsWith("startup")) {
     return { output: buildRunningConfig(state), state };
   }
+
+  // ─── show interfaces trunk ───
+  if (sub.startsWith("int") && sub.includes("trunk")) {
+    const trunkPorts = [];
+    Object.entries(state.interfaceCfg).forEach(([iface, cmds]) => {
+      const pi = getPortInfo(iface, cmds);
+      if (pi.trunk) trunkPorts.push({ iface, ...pi });
+    });
+    if (trunkPorts.length === 0) return { output: "% No trunk ports configured", state };
+    const lines = [
+      "Port        Mode         Encapsulation  Status        Native vlan",
+      "----------- ------------ -------------- ------------- -----------",
+    ];
+    trunkPorts.forEach(p => {
+      const enc = p.encap === "dot1q" ? "802.1q" : p.encap;
+      lines.push(`${p.iface.padEnd(12)}${"on".padEnd(13)}${enc.padEnd(15)}${"trunking".padEnd(14)}${p.nativeVlan}`);
+    });
+    lines.push("", "Port        Vlans allowed on trunk", "----------- --------------------------------------");
+    trunkPorts.forEach(p => lines.push(`${p.iface.padEnd(12)}${p.allowedVlans}`));
+    lines.push("", "Port        Vlans allowed and active in management domain", "----------- --------------------------------------");
+    trunkPorts.forEach(p => lines.push(`${p.iface.padEnd(12)}${p.allowedVlans}`));
+    return { output: lines.join("\n"), state };
+  }
+
+  // ─── show interfaces switchport ───
+  if (sub.startsWith("int") && sub.includes("switchport")) {
+    const lines = [];
+    const target = sub.match(/switchport\s+(\S+)/);
+    const ifaces = target ? [[normalizeInterface(target[1]), state.interfaceCfg[normalizeInterface(target[1])] || []]] : Object.entries(state.interfaceCfg);
+    ifaces.forEach(([iface, cmds]) => {
+      const pi = getPortInfo(iface, cmds);
+      lines.push(`Name: ${iface}`);
+      lines.push(`Switchport: Enabled`);
+      lines.push(`Administrative Mode: ${pi.mode === "trunk" ? "trunk" : pi.mode === "access" ? "static access" : "dynamic auto"}`);
+      lines.push(`Operational Mode: ${pi.trunk ? "trunk" : "static access"}`);
+      lines.push(`Administrative Trunking Encapsulation: ${pi.encap === "dot1q" ? "dot1q" : "negotiate"}`);
+      lines.push(`Negotiation of Trunking: ${pi.nonegotiate ? "Off" : "On"}`);
+      lines.push(`Access Mode VLAN: ${pi.accessVlan} (${state.vlans[pi.accessVlan] || "VLAN" + pi.accessVlan})`);
+      lines.push(`Trunking Native Mode VLAN: ${pi.nativeVlan} (${state.vlans[pi.nativeVlan] || "default"})`);
+      if (pi.voiceVlan) lines.push(`Voice VLAN: ${pi.voiceVlan} (${state.vlans[pi.voiceVlan] || "VLAN" + pi.voiceVlan})`);
+      lines.push(`Trunking VLANs Allowed: ${pi.allowedVlans}`);
+      lines.push(`Pruning VLANs Enabled: 2-1001`);
+      lines.push(`Protected: false`);
+      lines.push("");
+    });
+    return { output: lines.join("\n") || "% No switchport interfaces configured", state };
+  }
+
+  // ─── show interfaces status ───
+  if (sub.startsWith("int") && sub.includes("status")) {
+    const lines = [
+      "Port      Name               Status       Vlan       Duplex  Speed Type",
+      "--------- ------------------ ------------ ---------- ------- ----- ----",
+    ];
+    Object.entries(state.interfaces).forEach(([iface, info]) => {
+      const cmds = state.interfaceCfg[iface] || [];
+      const pi = getPortInfo(iface, cmds);
+      const status = info.status === "up" ? "connected" : "notconnect";
+      const vlanCol = pi.trunk ? "trunk" : pi.accessVlan;
+      lines.push(`${iface.padEnd(10)}${"".padEnd(19)}${status.padEnd(13)}${vlanCol.padEnd(11)}${"a-full".padEnd(8)}${"auto".padEnd(6)}10/100/1000BaseTX`);
+    });
+    return { output: lines.join("\n"), state };
+  }
+
+  // ─── show interfaces (detail or specific) ───
+  if (sub.startsWith("int") && !sub.startsWith("ip")) {
+    const lines = [];
+    // Check if specific interface requested
+    const ifMatch = sub.match(/^interfaces?\s+(\S+\s*\S*)$/i);
+    const targetIfaces = ifMatch
+      ? [[normalizeInterface(ifMatch[1].trim()), state.interfaces[normalizeInterface(ifMatch[1].trim())]]]
+      : Object.entries(state.interfaces);
+    targetIfaces.forEach(([name, info]) => {
+      if (!info) { lines.push(`% Invalid input detected at '^' marker.`); return; }
+      lines.push(`${name} is ${info.status}, line protocol is ${info.status === "up" ? "up" : "down"}`);
+      if (info.ip) lines.push(`  Internet address is ${info.ip}`);
+      if (info.ipv6) lines.push(`  IPv6 address is ${info.ipv6}`);
+      lines.push(`  MTU 1500 bytes, BW 10000 Kbit/sec, DLY 1000 usec`);
+      lines.push(`     reliability 255/255, txload 1/255, rxload 1/255`);
+      lines.push(`  Encapsulation ARPA, loopback not set`);
+      const cmds = state.interfaceCfg[name] || [];
+      const pi = getPortInfo(name, cmds);
+      if (pi.trunk) lines.push(`  Switchport mode: trunk, Encapsulation: ${pi.encap}`);
+      lines.push(`  Last input 00:00:01, output 00:00:01, output hang never`);
+      lines.push(`     0 packets input, 0 bytes, 0 no buffer`);
+      lines.push(`     0 input errors, 0 CRC, 0 frame, 0 overrun, 0 ignored`);
+      lines.push(`     0 packets output, 0 bytes, 0 underruns`);
+      lines.push(`     0 output errors, 0 collisions, 0 interface resets`);
+    });
+    return { output: lines.join("\n"), state };
+  }
+
   // show ip interface brief
   if (sub.startsWith("ip int") || sub.startsWith("ip interface")) {
     const lines = [
@@ -1508,165 +1671,379 @@ function processShow(parts, state) {
     });
     return { output: lines.join("\n"), state };
   }
-  // show interfaces
-  if (sub.startsWith("int") && !sub.startsWith("ip")) {
-    const lines = [];
-    Object.entries(state.interfaces).forEach(([name, info]) => {
-      lines.push(`${name} is ${info.status}, line protocol is ${info.status}`);
-      if (info.ip) lines.push(`  Internet address is ${info.ip}`);
-      lines.push(`  MTU 1500 bytes, BW 10000 Kbit/sec, DLY 1000 usec`);
-      lines.push(`     reliability 255/255, txload 1/255, rxload 1/255`);
-      lines.push(`  Encapsulation ARPA, loopback not set`);
-      lines.push(`  Last input 00:00:01, output 00:00:01, output hang never`);
-    });
-    return { output: lines.join("\n"), state };
-  }
-  // show vlan brief
+
+  // ─── show vlan brief (with port assignment) ───
   if (sub.startsWith("vlan")) {
     const lines = [
       "VLAN Name                             Status    Ports",
       "---- -------------------------------- --------- -------------------------------",
     ];
+    // Build vlan→port mapping
+    const vlanPorts = {};
+    Object.entries(state.interfaceCfg).forEach(([iface, cmds]) => {
+      const pi = getPortInfo(iface, cmds);
+      if (!pi.trunk) {
+        const vid = pi.accessVlan || "1";
+        if (!vlanPorts[vid]) vlanPorts[vid] = [];
+        vlanPorts[vid].push(iface);
+      }
+    });
+    // Also add interfaces not in interfaceCfg (default VLAN 1)
+    Object.keys(state.interfaces).forEach(iface => {
+      if (!state.interfaceCfg[iface] || state.interfaceCfg[iface].length === 0) {
+        if (!vlanPorts["1"]) vlanPorts["1"] = [];
+        if (!vlanPorts["1"].includes(iface)) vlanPorts["1"].push(iface);
+      }
+    });
     Object.entries(state.vlans).forEach(([id, name]) => {
-      const vname = name || ("VLAN" + id).padEnd(0);
-      lines.push(`${id.toString().padEnd(5)}${vname.padEnd(33)}active`);
+      const vname = name || ("VLAN" + id);
+      const ports = (vlanPorts[id] || []).join(", ");
+      lines.push(`${id.toString().padEnd(5)}${vname.padEnd(33)}active    ${ports}`);
     });
     return { output: lines.join("\n"), state };
   }
+
   // show ip route
   if (sub.startsWith("ip route") || sub.startsWith("ip ro")) {
     const lines = [
       "Codes: L - local, C - connected, S - static, R - RIP, O - OSPF,",
-      "       B - BGP, * - candidate default",
+      "       B - BGP, * - candidate default, E - EIGRP",
+      "",
+      "Gateway of last resort is not set",
       "",
     ];
-    // Connected routes from interfaces
+    // Connected routes
     Object.entries(state.interfaces).forEach(([name, info]) => {
       if (info.ip && info.ip !== "dhcp" && info.status === "up") {
         const ip = info.ip.split("/")[0];
         const cidr = info.ip.split("/")[1] || "24";
         lines.push(`C    ${ip}/${cidr} is directly connected, ${name}`);
+        lines.push(`L    ${ip}/32 is directly connected, ${name}`);
       }
     });
+    // Default route check
+    const hasDefault = state.staticRoutes.some(r => r.includes("0.0.0.0 0.0.0.0"));
+    if (hasDefault) lines[3] = "Gateway of last resort is set";
     // Static routes
     state.staticRoutes.forEach(r => {
       const p = r.replace(/^ip route\s+/, "");
-      lines.push(`S    ${p}`);
+      const isDefault = p.startsWith("0.0.0.0 0.0.0.0");
+      lines.push(`S${isDefault ? "*" : " "}   ${p}`);
     });
-    if (state.staticRoutes.length === 0 && Object.keys(state.interfaces).length === 0) {
+    if (state.staticRoutes.length === 0 && Object.keys(state.interfaces).every(k => !state.interfaces[k].ip)) {
       lines.push("% No routes found");
     }
     return { output: lines.join("\n"), state };
   }
+
   // show ipv6 route
   if (sub.startsWith("ipv6 route") || sub.startsWith("ipv6 ro")) {
-    const lines = ["IPv6 Routing Table", "Codes: C - Connected, L - Local, S - Static, O - OSPF", ""];
-    state.staticRoutesV6.forEach(r => {
+    const lines = ["IPv6 Routing Table - 0 entries", "Codes: C - Connected, L - Local, S - Static, O - OSPF", ""];
+    (state.staticRoutesV6 || []).forEach(r => {
       lines.push(`S    ${r.replace(/^ipv6 route\s+/, "")}`);
     });
+    lines[0] = `IPv6 Routing Table - ${(state.staticRoutesV6 || []).length} entries`;
     return { output: lines.join("\n"), state };
   }
+
   // show ip ospf
   if (sub.startsWith("ip ospf")) {
     const rid = state.ospfConfig.routerId || "0.0.0.0";
     const nets = state.ospfConfig.networks || [];
+    // Find process ID from routerCfg
+    const ospfProc = Object.keys(state.routerCfg).find(k => k.startsWith("ospf")) || "ospf 1";
+    const pid = ospfProc.replace("ospf ", "");
     const lines = [
-      `Routing Process "ospf" with ID ${rid}`,
-      `  Number of areas: 1 (Area 0)`,
-      `  Number of interfaces: ${nets.length}`,
-      `  Reference bandwidth: 100 mbps`,
+      `Routing Process "ospf ${pid}" with ID ${rid}`,
+      ` Start time: 00:00:01.000, Time elapsed: 00:10:00.000`,
+      ` Supports only single TOS(TOS0) routes`,
+      ` Supports opaque LSA`,
+      ` Number of areas in this router is 1. 1 normal 0 stub 0 nssa`,
+      ` Number of areas transit capable is 0`,
+      ` Reference bandwidth unit is 100 mbps`,
+      ` Number of interfaces in this area: ${nets.length}`,
     ];
     return { output: lines.join("\n"), state };
   }
+
   // show ip nat translations
   if (sub.startsWith("ip nat")) {
     if (state.natRules.length === 0) return { output: "% No NAT translations active", state };
-    const lines = ["Pro Inside global      Inside local       Outside local      Outside global"];
-    lines.push("--- ---                ---                ---                ---");
+    const lines = ["Pro  Inside global       Inside local        Outside local       Outside global", "---  ------------------- ------------------- ------------------- -------------------"];
+    lines.push("---  ---                 ---                 ---                 ---");
     return { output: lines.join("\n"), state };
   }
-  // show cdp
+
+  // ─── show cdp neighbors ───
+  if (sub.startsWith("cdp") && sub.includes("neigh")) {
+    if (!state.cdpGlobal) return { output: "% CDP is not enabled", state };
+    const lines = [
+      "Capability Codes: R - Router, T - Trans Bridge, B - Source Route Bridge",
+      "                  S - Switch, H - Host, I - IGMP, r - Repeater, P - Phone",
+      "",
+      "Device ID        Local Intrfce     Holdtme    Capability  Platform  Port ID",
+    ];
+    // Simulated neighbors based on lab topology
+    Object.entries(state.interfaceCfg).forEach(([iface, cmds]) => {
+      const pi = getPortInfo(iface, cmds);
+      if (pi.cdp !== false && (pi.trunk || pi.mode === "access")) {
+        lines.push(`Neighbor         ${iface.padEnd(18)}160        R S I       Cisco     Eth0/0`);
+      }
+    });
+    if (lines.length === 4) lines.push("% No CDP neighbors found");
+    lines.push("", `Total cdp entries displayed : ${Math.max(0, lines.length - 5)}`);
+    return { output: lines.join("\n"), state };
+  }
+
+  // ─── show cdp (global) ───
   if (sub.startsWith("cdp")) {
     return {
       output: `Global CDP information:\n  Sending CDP packets every 60 seconds\n  Sending a holdtime value of 180 seconds\n  Sending CDPv2 advertisements is enabled\n  CDP is ${state.cdpGlobal ? "enabled" : "disabled"}`,
       state
     };
   }
-  // show lldp
+
+  // ─── show lldp neighbors ───
+  if (sub.startsWith("lldp") && sub.includes("neigh")) {
+    if (!state.lldpGlobal) return { output: "% LLDP is not enabled", state };
+    const lines = [
+      "Capability codes:",
+      "    (R) Router, (B) Bridge, (T) Telephone, (C) DOCSIS Cable Device",
+      "    (W) WLAN Access Point, (P) Repeater, (S) Station, (O) Other",
+      "",
+      "Device ID          Local Intf     Hold-time  Capability      Port ID",
+    ];
+    Object.entries(state.interfaceCfg).forEach(([iface, cmds]) => {
+      const pi = getPortInfo(iface, cmds);
+      if (pi.lldpTx !== false && (pi.trunk || pi.mode === "access")) {
+        lines.push(`Neighbor           ${iface.padEnd(15)}120        B,R             Eth0/0`);
+      }
+    });
+    if (lines.length === 5) lines.push("% No LLDP neighbors found");
+    lines.push("", `Total entries displayed: ${Math.max(0, lines.length - 6)}`);
+    return { output: lines.join("\n"), state };
+  }
+
+  // ─── show lldp (global) ───
   if (sub.startsWith("lldp")) {
     return {
-      output: `Global LLDP Information:\n  Status: ${state.lldpGlobal ? "ACTIVE" : "DISABLED"}\n  LLDP advertisements are sent every 30 seconds\n  LLDP hold time advertised is 120 seconds`,
+      output: `Global LLDP Information:\n  Status: ${state.lldpGlobal ? "ACTIVE" : "DISABLED"}\n  LLDP advertisements are sent every 30 seconds\n  LLDP hold time advertised is 120 seconds\n  LLDP reinitializing delay is 2 seconds`,
       state
     };
   }
-  // show port-security
-  if (sub.includes("port-security")) {
-    const lines = ["Secure Port  MaxSecureAddr  CurrentAddr  SecurityViolation  Security Action"];
-    Object.entries(state.portSecurity).forEach(([iface, cfg]) => {
-      if (cfg.enabled) {
-        lines.push(`${iface.padEnd(13)}${(cfg.max || "1").padEnd(15)}0${" ".repeat(12)}0${" ".repeat(18)}${cfg.violation || "Shutdown"}`);
+
+  // ─── show etherchannel summary ───
+  if (sub.includes("etherchannel") || sub.includes("port-channel")) {
+    const channels = {};
+    Object.entries(state.interfaceCfg).forEach(([iface, cmds]) => {
+      const pi = getPortInfo(iface, cmds);
+      if (pi.channelGroup) {
+        if (!channels[pi.channelGroup]) channels[pi.channelGroup] = { mode: pi.channelMode, members: [] };
+        channels[pi.channelGroup].members.push(iface);
       }
     });
-    if (lines.length === 1) lines.push("% Port security not configured on any interface");
+    const lines = [
+      "Flags:  D - down        P - bundled in port-channel",
+      "        I - stand-alone  s - suspended",
+      "        H - Hot-standby (LACP only)",
+      "        R - Layer3       S - Layer2",
+      "        U - in use       f - failed to allocate aggregator",
+      "",
+      "Number of channel-groups in use: " + Object.keys(channels).length,
+      "Number of aggregators:           " + Object.keys(channels).length,
+      "",
+      "Group  Port-channel  Protocol    Ports",
+      "------+-------------+-----------+-----------------------------------------------",
+    ];
+    Object.entries(channels).forEach(([grp, info]) => {
+      const proto = (info.mode === "active" || info.mode === "passive") ? "LACP" : (info.mode === "on" ? "  -" : "PAgP");
+      const memberStr = info.members.map(m => `${m}(P)`).join("    ");
+      lines.push(`${grp.padEnd(7)}Po${grp.padEnd(12)}${proto.padEnd(12)}${memberStr}`);
+    });
+    if (Object.keys(channels).length === 0) lines.push("% No EtherChannel configured");
     return { output: lines.join("\n"), state };
   }
+
+  // show port-security
+  if (sub.includes("port-security")) {
+    const lines = [
+      "Secure Port  MaxSecureAddr  CurrentAddr  SecurityViolation  Security Action",
+      "----------   -------------  -----------  -----------------  ---------------",
+    ];
+    Object.entries(state.portSecurity).forEach(([iface, cfg]) => {
+      if (cfg.enabled) {
+        const maxStr = (cfg.max || "1").toString();
+        const violStr = cfg.violation ? cfg.violation.charAt(0).toUpperCase() + cfg.violation.slice(1) : "Shutdown";
+        lines.push(`${iface.padEnd(13)}${maxStr.padEnd(15)}0${" ".repeat(12)}0${" ".repeat(18)}${violStr}`);
+      }
+    });
+    if (lines.length === 2) lines.push("% Port security not configured on any interface");
+    return { output: lines.join("\n"), state };
+  }
+
   // show ip dhcp snooping
   if (sub.includes("dhcp snooping") || sub.includes("dhcp snoop")) {
     const lines = [
-      `DHCP Snooping is ${state.dhcpSnooping.enabled ? "enabled" : "disabled"}`,
-      `DHCP Snooping is configured on following VLANs: ${state.dhcpSnooping.vlans.join(",")||"none"}`,
+      `Switch DHCP snooping is ${state.dhcpSnooping.enabled ? "enabled" : "disabled"}`,
+      `Switch DHCP gleaning is disabled`,
+      `DHCP snooping is configured on following VLANs:`,
+      `${state.dhcpSnooping.vlans.length ? state.dhcpSnooping.vlans.join(",") : "none"}`,
+      `DHCP snooping is operational on following VLANs:`,
+      `${state.dhcpSnooping.vlans.length ? state.dhcpSnooping.vlans.join(",") : "none"}`,
+      `Insertion of option 82 is ${state.dhcpSnooping.options?.["information option"] === false ? "disabled" : "enabled"}`,
     ];
+    const trusted = state.dhcpSnooping.trusted || [];
+    if (trusted.length) {
+      lines.push("", "Interface                  Trusted    Rate limit (pps)");
+      lines.push("-----------------------    -------    ----------------");
+      trusted.forEach(t => lines.push(`${t.padEnd(27)}yes        unlimited`));
+    }
     return { output: lines.join("\n"), state };
   }
+
   // show ip arp inspection
   if (sub.includes("arp inspection")) {
     const lines = [
-      `Dynamic ARP Inspection configured on VLANs: ${state.daiConfig.vlans.join(",")||"none"}`,
-      `Validation: ${state.daiConfig.validate.join(" ") || "none"}`,
+      `Source Mac Validation      : ${state.daiConfig.validate.includes("src-mac") ? "Enabled" : "Disabled"}`,
+      `Destination Mac Validation : ${state.daiConfig.validate.includes("dst-mac") ? "Enabled" : "Disabled"}`,
+      `IP Address Validation      : ${state.daiConfig.validate.includes("ip") ? "Enabled" : "Disabled"}`,
+      ``,
+      ` Vlan     Configuration    Operation   ACL Match          Static ACL`,
+      ` ----     -------------    ---------   ---------          ----------`,
     ];
+    state.daiConfig.vlans.forEach(v => {
+      lines.push(` ${v.padEnd(9)}Enabled          Active      N/A                N/A`);
+    });
+    if (state.daiConfig.vlans.length === 0) lines.push(" No VLANs configured for DAI");
     return { output: lines.join("\n"), state };
   }
+
+  // ─── show mac address-table ───
+  if (sub.startsWith("mac") || sub.includes("mac-address") || sub.includes("mac address")) {
+    const lines = [
+      "          Mac Address Table",
+      "-------------------------------------------",
+      "",
+      "Vlan    Mac Address       Type        Ports",
+      "----    -----------       --------    -----",
+    ];
+    // Generate simulated MAC entries from configured access ports
+    let count = 0;
+    Object.entries(state.interfaceCfg).forEach(([iface, cmds]) => {
+      const pi = getPortInfo(iface, cmds);
+      if (!pi.trunk && state.interfaces[iface]?.status === "up") {
+        const hash = iface.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+        const mac = `0050.${(hash & 0xffff).toString(16).padStart(4,"0")}.${((hash*7) & 0xffff).toString(16).padStart(4,"0")}`;
+        lines.push(`${pi.accessVlan.padEnd(8)}${mac.padEnd(18)}DYNAMIC     ${iface}`);
+        count++;
+      }
+    });
+    lines.push(`Total Mac Addresses for this criterion: ${count}`);
+    return { output: lines.join("\n"), state };
+  }
+
+  // ─── show spanning-tree ───
+  if (sub.startsWith("span")) {
+    const lines = [];
+    const activeVlans = Object.keys(state.vlans);
+    activeVlans.forEach(vid => {
+      lines.push(`VLAN${vid.toString().padStart(4, "0")}`);
+      lines.push(`  Spanning tree enabled protocol rstp`);
+      lines.push(`  Root ID    Priority    32768`);
+      lines.push(`             Address     aabb.cc00.0100`);
+      lines.push(`             This bridge is the root`);
+      lines.push(`             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec`);
+      lines.push(``);
+      lines.push(`  Bridge ID  Priority    32768  (priority 32768 sys-id-ext ${vid})`);
+      lines.push(`             Address     aabb.cc00.0100`);
+      lines.push(`             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec`);
+      lines.push(`             Aging Time  300 sec`);
+      lines.push(``);
+      lines.push(`Interface           Role Sts Cost      Prio.Nbr Type`);
+      lines.push(`------------------- ---- --- --------- -------- --------------------------------`);
+      Object.entries(state.interfaceCfg).forEach(([iface, cmds]) => {
+        const pi = getPortInfo(iface, cmds);
+        const pf = pi.portfast ? "Edge " : "";
+        lines.push(`${iface.padEnd(20)}Desg FWD 100       128.1    ${pf}P2p`);
+      });
+      lines.push("");
+    });
+    if (lines.length === 0) lines.push("No spanning tree instances exist.");
+    return { output: lines.join("\n"), state };
+  }
+
   // show ntp
   if (sub.startsWith("ntp")) {
     const entries = Object.keys(state.ntpConfig);
     if (entries.length === 0) return { output: "% NTP is not configured", state };
-    return { output: `NTP Configuration:\n  ${entries.join("\n  ")}`, state };
+    const lines = [];
+    if (state.ntpConfig.master) lines.push("NTP master stratum 8");
+    entries.forEach(e => { if (e !== "master") lines.push(`ntp ${e}`); });
+    return { output: lines.join("\n"), state };
   }
+
   // show ip access-lists
   if (sub.includes("access-list") || sub.includes("access-lists")) {
     const lines = [];
     Object.entries(state.aclCfg).forEach(([name, entries]) => {
-      lines.push(`IP access list ${name}`);
-      entries.forEach((e, i) => lines.push(`  ${(i+1)*10} ${e}`));
+      const aclDef = state.globalCmds.find(c => c.includes("access-list") && c.includes(name));
+      const type = aclDef && aclDef.includes("extended") ? "Extended" : "Standard";
+      lines.push(`${type} IP access list ${name}`);
+      entries.forEach((e, i) => lines.push(`    ${(i+1)*10} ${e}`));
     });
     if (lines.length === 0) lines.push("% No access lists configured");
     return { output: lines.join("\n"), state };
   }
-  // show etherchannel / port-channel
-  if (sub.includes("etherchannel") || sub.includes("port-channel")) {
-    return { output: "Flags:  D - down  P - bundled in port-channel\n        U - in use\n\nGroup  Port-channel  Protocol    Ports\n------+-------------+-----------+-------", state };
-  }
+
   // show ip dhcp pool
-  if (sub.includes("dhcp pool")) {
+  if (sub.includes("dhcp pool") || sub.includes("dhcp bind")) {
     const lines = [];
     Object.entries(state.dhcpCfg).forEach(([name, entries]) => {
-      lines.push(`Pool ${name}:`);
-      entries.forEach(e => lines.push(`  ${e}`));
+      lines.push(`Pool ${name} :`);
+      lines.push(` Utilization mark (high/low)    : 100 / 0`);
+      entries.forEach(e => lines.push(` ${e}`));
+      lines.push("");
     });
     if (lines.length === 0) lines.push("% No DHCP pools configured");
     return { output: lines.join("\n"), state };
   }
+
   // show version
   if (sub.startsWith("ver")) {
     return {
-      output: `Cisco IOS Software, Version 15.9(3)M7\nCopyright (c) by Cisco Systems, Inc.\n\nROM: System Bootstrap, Version 15.1(4)M4\n\n${state.hostname} uptime is 0 minutes\nSystem image file is "flash:c2900-universalk9-mz.SPA.159-3.M7.bin"\n\nCisco CISCO2901/K9 (revision 1.0) with 491520K/32768K bytes of memory.\nProcessor board ID FJC2139F0BK\n2 Gigabit Ethernet interfaces\nDRAM configuration is 64 bits wide with parity disabled.\n256K bytes of non-volatile configuration memory.\n255744K bytes of ATA System CompactFlash 0 (Read/Write)`,
+      output: `Cisco IOS Software, Version 15.9(3)M7\nCopyright (c) by Cisco Systems, Inc.\n\nROM: System Bootstrap, Version 15.1(4)M4\n\n${state.hostname} uptime is 0 minutes\nSystem image file is "flash:c2900-universalk9-mz.SPA.159-3.M7.bin"\n\nCisco ${state.type === "switch" ? "WS-C2960-24TT-L" : "CISCO2901/K9"} (revision 1.0)\n${state.type === "switch" ? "2" : "2"} ${state.type === "switch" ? "FastEthernet/IEEE 802.3" : "Gigabit Ethernet"} interfaces\n256K bytes of non-volatile configuration memory.\n255744K bytes of ATA System CompactFlash 0 (Read/Write)`,
       state
     };
   }
+
   // show clock
-  if (sub.startsWith("clock")) {
-    return { output: `*12:00:00.000 UTC Sat Feb 21 2026`, state };
+  if (sub.startsWith("clock") || sub.startsWith("cl")) {
+    return { output: `*12:00:00.000 UTC Sun Feb 22 2026`, state };
   }
+
+  // ─── show ? (help for show subcommands) ───
+  if (sub === "" || sub === "?") {
+    const showHelp = [
+      ["access-lists", "List access lists"],
+      ["arp", "ARP table / DAI"],
+      ["cdp", "CDP information"],
+      ["clock", "Display the system clock"],
+      ["etherchannel", "EtherChannel information"],
+      ["interfaces", "Interface status and configuration"],
+      ["ip", "IP information"],
+      ["lldp", "LLDP information"],
+      ["mac", "MAC forwarding table"],
+      ["ntp", "NTP information"],
+      ["port-security", "Show port security"],
+      ["running-config", "Current operating configuration"],
+      ["spanning-tree", "Spanning tree topology"],
+      ["startup-config", "Saved configuration"],
+      ["version", "System hardware and software status"],
+      ["vlan", "VTP VLAN status"],
+    ];
+    return { output: showHelp.map(([c, d]) => `  ${c.padEnd(20)} ${d}`).join("\n"), state };
+  }
+
   return { output: `% Invalid input detected at '^' marker.\n\n  show ${sub}\n       ^`, state };
 }
 
@@ -1773,27 +2150,32 @@ function getHelp(state) {
   const helps = {
     user: [
       ["enable", "Turn on privileged commands"],
+      ["exit", "Exit from the EXEC"],
       ["ping", "Send echo messages"],
       ["show", "Show running system information"],
       ["traceroute", "Trace route to destination"],
     ],
     privileged: [
+      ["clear", "Reset functions"],
+      ["clock set", "Set the time and date"],
       ["configure terminal", "Enter configuration mode"],
       ["copy", "Copy from one file to another"],
-      ["clock set", "Set the time and date"],
       ["crypto key generate rsa", "Generate RSA keys for SSH"],
       ["debug", "Debugging functions"],
+      ["exit", "Exit from the EXEC"],
       ["ping", "Send echo messages"],
       ["reload", "Halt and perform a cold restart"],
       ["show", "Show running system information"],
       ["ssh", "Open a secure shell client connection"],
       ["terminal", "Set terminal line parameters"],
       ["traceroute", "Trace route to destination"],
+      ["undebug", "Disable debugging functions"],
       ["write memory", "Save running config to NVRAM"],
     ],
     config: [
       ["cdp run", "Enable CDP"],
       ["crypto key generate rsa", "Generate RSA keys"],
+      ["exit", "Exit from configure mode"],
       ["hostname", "Set system's network name"],
       ["interface", "Select an interface to configure"],
       ["ip access-list", "Named access list"],
@@ -1801,20 +2183,25 @@ function getHelp(state) {
       ["ip dhcp excluded-address", "Prevent DHCP from assigning certain addresses"],
       ["ip dhcp pool", "Configure DHCP address pool"],
       ["ip dhcp snooping", "DHCP Snooping"],
+      ["ip domain-name", "Define the default domain name"],
       ["ip nat", "NAT configuration commands"],
       ["ip route", "Establish static routes"],
       ["ipv6 route", "Establish IPv6 static routes"],
+      ["ipv6 unicast-routing", "Enable IPv6 routing"],
       ["line", "Configure a terminal line"],
       ["lldp run", "Enable LLDP"],
       ["no", "Negate a command or set its defaults"],
       ["ntp", "Configure NTP"],
       ["router", "Enable a routing process"],
+      ["spanning-tree", "Spanning Tree Subsystem"],
       ["username", "Establish user name authentication"],
       ["vlan", "VLAN commands"],
     ],
     "config-if": [
       ["cdp enable", "Enable CDP on this interface"],
       ["channel-group", "Etherchannel/port bundling"],
+      ["description", "Interface specific description"],
+      ["exit", "Exit from interface configuration mode"],
       ["ip address", "Set the IP address of an interface"],
       ["ip dhcp snooping trust", "DHCP Snooping trust"],
       ["ip nat inside|outside", "NAT interface designation"],
@@ -1823,41 +2210,55 @@ function getHelp(state) {
       ["lldp transmit|receive", "LLDP per-interface"],
       ["no", "Negate a command"],
       ["shutdown", "Shutdown the selected interface"],
+      ["spanning-tree bpduguard", "Don't accept BPDUs on this interface"],
+      ["spanning-tree portfast", "Portfast on this interface"],
       ["switchport access vlan", "Set access mode VLAN"],
-      ["switchport mode", "Set interface trunking mode"],
-      ["switchport port-security", "Port security"],
+      ["switchport mode", "Set interface trunking mode (access|trunk)"],
+      ["switchport nonegotiate", "Disable DTP negotiation"],
+      ["switchport port-security", "Port security commands"],
       ["switchport trunk", "Trunk configuration"],
       ["switchport voice vlan", "Set voice VLAN"],
     ],
     "config-line": [
+      ["exec-timeout", "Set the EXEC timeout"],
+      ["exit", "Exit from line configuration mode"],
       ["login local", "Enable login using local database"],
       ["password", "Set a line password"],
       ["transport input", "Define which protocols to use for incoming connections"],
     ],
     "config-router": [
+      ["exit", "Exit from router configuration mode"],
+      ["log-adjacency-changes", "Log changes in adjacency state"],
       ["network", "Enable routing on an IP network"],
       ["passive-interface", "Suppress routing updates on an interface"],
+      ["redistribute", "Redistribute information from another routing protocol"],
       ["router-id", "Router ID for this OSPF process"],
     ],
     "config-vlan": [
+      ["exit", "Exit from VLAN configuration mode"],
       ["name", "ASCII name of the VLAN"],
     ],
     "config-acl": [
       ["deny", "Specify packets to reject"],
+      ["exit", "Exit from access-list configuration mode"],
       ["permit", "Specify packets to forward"],
+      ["remark", "Access list entry comment"],
     ],
     "config-ext-acl": [
       ["deny", "Specify packets to reject"],
+      ["exit", "Exit from access-list configuration mode"],
       ["permit", "Specify packets to forward"],
+      ["remark", "Access list entry comment"],
     ],
     "config-dhcp": [
       ["default-router", "Default routers"],
       ["dns-server", "DNS servers"],
+      ["exit", "Exit from DHCP pool configuration mode"],
       ["network", "Network number and mask"],
     ],
   };
   const entries = helps[state.mode] || [["?", "Show help"]];
-  return entries.map(([cmd, desc]) => `  ${cmd.padEnd(28)} ${desc}`).join("\n");
+  return entries.map(([cmd, desc]) => `  ${cmd.padEnd(30)} ${desc}`).join("\n");
 }
 
 // ─── TASK VERIFICATION ENGINE ───────────────────────────────────────────────
@@ -2061,7 +2462,9 @@ export default function CiscoLabSimulator() {
         { p: "sh ip ro", c: "show ip route", modes: ["privileged", "user"] },
         { p: "sh vl", c: "show vlan brief", modes: ["privileged", "user"] },
         { p: "sh ip os", c: "show ip ospf", modes: ["privileged"] },
+        { p: "sh cdp n", c: "show cdp neighbors", modes: ["privileged"] },
         { p: "sh cd", c: "show cdp", modes: ["privileged"] },
+        { p: "sh lldp n", c: "show lldp neighbors", modes: ["privileged"] },
         { p: "sh ll", c: "show lldp", modes: ["privileged"] },
         { p: "sh ip ac", c: "show ip access-lists", modes: ["privileged"] },
         { p: "sh ip na", c: "show ip nat translations", modes: ["privileged"] },
@@ -2071,6 +2474,12 @@ export default function CiscoLabSimulator() {
         { p: "sh ip dh", c: "show ip dhcp snooping", modes: ["privileged"] },
         { p: "sh ip ar", c: "show ip arp inspection", modes: ["privileged"] },
         { p: "sh eth", c: "show etherchannel summary", modes: ["privileged"] },
+        { p: "sh int t", c: "show interfaces trunk", modes: ["privileged"] },
+        { p: "sh int sw", c: "show interfaces switchport", modes: ["privileged"] },
+        { p: "sh int st", c: "show interfaces status", modes: ["privileged"] },
+        { p: "sh mac", c: "show mac address-table", modes: ["privileged"] },
+        { p: "sh span", c: "show spanning-tree", modes: ["privileged"] },
+        { p: "sh ipv6 ro", c: "show ipv6 route", modes: ["privileged"] },
         { p: "wr", c: "write memory", modes: ["privileged"] },
         { p: "pi", c: "ping ", modes: ["privileged", "user"] },
         { p: "tr", c: "traceroute ", modes: ["privileged", "user"] },
@@ -2084,7 +2493,9 @@ export default function CiscoLabSimulator() {
         { p: "ip ac", c: "ip access-list ", modes: ["config"] },
         { p: "ip na", c: "ip nat ", modes: ["config"] },
         { p: "ip dh", c: "ip dhcp ", modes: ["config"] },
+        { p: "ip do", c: "ip domain-name ", modes: ["config"] },
         { p: "ipv6 ro", c: "ipv6 route ", modes: ["config"] },
+        { p: "ipv6 u", c: "ipv6 unicast-routing", modes: ["config"] },
         { p: "vl", c: "vlan ", modes: ["config"] },
         { p: "li", c: "line vty 0 4", modes: ["config"] },
         { p: "us", c: "username ", modes: ["config"] },
@@ -2094,6 +2505,7 @@ export default function CiscoLabSimulator() {
         { p: "cr", c: "crypto key generate rsa", modes: ["config"] },
         { p: "nt", c: "ntp ", modes: ["config"] },
         { p: "ho", c: "hostname ", modes: ["config"] },
+        { p: "sp", c: "spanning-tree ", modes: ["config"] },
         { p: "no", c: "no ", modes: ["config", "config-if", "config-line", "config-router"] },
         // interface
         { p: "sw m", c: "switchport mode ", modes: ["config-if"] },
@@ -2103,6 +2515,7 @@ export default function CiscoLabSimulator() {
         { p: "sw tr a", c: "switchport trunk allowed vlan ", modes: ["config-if"] },
         { p: "sw tr n", c: "switchport trunk native vlan ", modes: ["config-if"] },
         { p: "sw po", c: "switchport port-security", modes: ["config-if"] },
+        { p: "sw no", c: "switchport nonegotiate", modes: ["config-if"] },
         { p: "ch", c: "channel-group ", modes: ["config-if"] },
         { p: "ip ad", c: "ip address ", modes: ["config-if"] },
         { p: "ip os", c: "ip ospf ", modes: ["config-if"] },
@@ -2111,25 +2524,32 @@ export default function CiscoLabSimulator() {
         { p: "ipv6 ad", c: "ipv6 address ", modes: ["config-if"] },
         { p: "no sh", c: "no shutdown", modes: ["config-if"] },
         { p: "sh", c: "shutdown", modes: ["config-if"] },
+        { p: "sp p", c: "spanning-tree portfast", modes: ["config-if"] },
+        { p: "sp b", c: "spanning-tree bpduguard enable", modes: ["config-if"] },
         { p: "ll t", c: "lldp transmit", modes: ["config-if"] },
         { p: "ll r", c: "lldp receive", modes: ["config-if"] },
         { p: "no ll t", c: "no lldp transmit", modes: ["config-if"] },
         { p: "no ll r", c: "no lldp receive", modes: ["config-if"] },
         { p: "cd", c: "cdp enable", modes: ["config-if"] },
         { p: "no cd", c: "no cdp enable", modes: ["config-if"] },
+        { p: "de", c: "description ", modes: ["config-if"] },
         // line
         { p: "lo", c: "login local", modes: ["config-line"] },
         { p: "tr", c: "transport input ", modes: ["config-line"] },
         { p: "pa", c: "password ", modes: ["config-line"] },
+        { p: "ex", c: "exec-timeout ", modes: ["config-line"] },
         // router
         { p: "ne", c: "network ", modes: ["config-router"] },
         { p: "ro", c: "router-id ", modes: ["config-router"] },
         { p: "pa", c: "passive-interface ", modes: ["config-router"] },
+        { p: "lo", c: "log-adjacency-changes", modes: ["config-router"] },
+        { p: "re", c: "redistribute ", modes: ["config-router"] },
         // vlan
         { p: "na", c: "name ", modes: ["config-vlan"] },
         // acl
         { p: "pe", c: "permit ", modes: ["config-acl", "config-ext-acl"] },
         { p: "de", c: "deny ", modes: ["config-acl", "config-ext-acl"] },
+        { p: "re", c: "remark ", modes: ["config-acl", "config-ext-acl"] },
         // dhcp
         { p: "ne", c: "network ", modes: ["config-dhcp"] },
         { p: "de", c: "default-router ", modes: ["config-dhcp"] },
@@ -2139,6 +2559,11 @@ export default function CiscoLabSimulator() {
         { p: "do sh ip int", c: "do show ip interface brief", modes: ["config", "config-if"] },
         { p: "do sh vl", c: "do show vlan brief", modes: ["config", "config-if"] },
         { p: "do sh ip ro", c: "do show ip route", modes: ["config", "config-if"] },
+        { p: "do sh int t", c: "do show interfaces trunk", modes: ["config", "config-if"] },
+        { p: "do sh int sw", c: "do show interfaces switchport", modes: ["config", "config-if"] },
+        { p: "do sh eth", c: "do show etherchannel summary", modes: ["config", "config-if"] },
+        { p: "do sh mac", c: "do show mac address-table", modes: ["config", "config-if"] },
+        { p: "do sh span", c: "do show spanning-tree", modes: ["config", "config-if"] },
         { p: "do wr", c: "do write memory", modes: ["config", "config-if"] },
         { p: "do pi", c: "do ping ", modes: ["config", "config-if"] },
       ];
