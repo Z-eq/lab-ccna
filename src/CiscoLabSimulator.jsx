@@ -860,7 +860,6 @@ function createDeviceState(device) {
     ntpConfig: {},
     sshConfigured: false,
     commandHistory: [],
-    allCommands: [], // every command entered, with context
   };
 }
 
@@ -917,6 +916,54 @@ function parseInterfaceRange(input) {
   return result;
 }
 
+// ─── CONFIG HELPERS: dedup + no-command support ────────────────────────────
+function cfgAdd(arr, cmd) {
+  const c = cmd.trim().toLowerCase();
+  if (!c) return arr;
+  // Some cmds replace (ip address, switchport mode, switchport access vlan, etc)
+  const replaceKeys = [
+    "ip address ", "ipv6 address ", "switchport mode ", "switchport access vlan ",
+    "switchport voice vlan ", "switchport trunk native vlan ", "switchport trunk allowed vlan ",
+    "switchport trunk encapsulation ", "switchport port-security maximum ",
+    "switchport port-security violation ", "ip ospf priority ", "channel-group ",
+    "ip ospf ", "router-id ",
+  ];
+  for (const key of replaceKeys) {
+    if (c.startsWith(key)) {
+      return [...arr.filter(x => !x.startsWith(key)), c];
+    }
+  }
+  if (arr.includes(c)) return arr; // dedup
+  return [...arr, c];
+}
+
+function cfgRemove(arr, noCmd) {
+  // noCmd is "no switchport mode access" → remove "switchport mode access"
+  const positive = noCmd.replace(/^no\s+/, "").trim().toLowerCase();
+  if (!positive) return arr;
+  // Remove any line that starts with the positive command
+  const filtered = arr.filter(x => {
+    if (x === positive) return false;
+    if (x.startsWith(positive + " ")) return false;
+    // Also handle "no shutdown" → remove "shutdown"
+    return true;
+  });
+  // If nothing removed and this is a meaningful no-command, add the no version
+  if (filtered.length === arr.length) {
+    const c = noCmd.trim().toLowerCase();
+    if (arr.includes(c)) return arr;
+    return [...arr, c];
+  }
+  return filtered;
+}
+
+function cfgSet(arr, cmd) {
+  // For commands where only the no-form is meaningful (like "no cdp enable")
+  const c = cmd.trim().toLowerCase();
+  if (arr.includes(c)) return arr;
+  return [...arr, c];
+}
+
 function processCommand(input, state) {
   const rawCmd = input.trim();
   if (!rawCmd) return { output: "", state };
@@ -928,16 +975,6 @@ function processCommand(input, state) {
   const lc = cmd.toLowerCase();
   const parts = lc.split(/\s+/);
   const first = parts[0];
-
-  // Record command with context for verification
-  const cmdRecord = {
-    raw: rawCmd,
-    lower: lc,
-    mode: state.mode,
-    device: state.hostname,
-    context: state.currentInterface || state.currentLine || state.currentRouter || state.currentVlan || state.currentAcl || state.currentDhcpPool || null,
-  };
-  state.allCommands = [...state.allCommands, cmdRecord];
 
   // Universal: ?
   if (rawCmd === "?") return { output: getHelp(state), state };
@@ -1012,14 +1049,18 @@ function processCommand(input, state) {
 
   // ─── GLOBAL CONFIG ────
   if (state.mode === "config") {
+    const isNo = first === "no";
+    const positiveParts = isNo ? parts.slice(1) : parts;
+    const positiveCmd = isNo ? lc.replace(/^no\s+/, "") : lc;
+    const pFirst = positiveParts[0];
+
     // Interface
-    if (first === "interface" || first === "int") {
+    if ((pFirst === "interface" || pFirst === "int") && !isNo) {
       const rest = rawCmd.replace(/^(interface|int)\s+/i, "");
-      // Check for range
       if (rest.toLowerCase().startsWith("range ")) {
         const rangeStr = rest.replace(/^range\s+/i, "");
         const interfaces = parseInterfaceRange(rangeStr);
-        const ifName = interfaces[0]; // work with first, store all
+        const ifName = interfaces[0];
         if (!state.interfaceCfg[ifName]) state.interfaceCfg[ifName] = [];
         return { output: "", state: { ...state, mode: "config-if", currentInterface: ifName, _rangeInterfaces: interfaces } };
       }
@@ -1027,134 +1068,226 @@ function processCommand(input, state) {
       if (!state.interfaceCfg[ifName]) state.interfaceCfg[ifName] = [];
       return { output: "", state: { ...state, mode: "config-if", currentInterface: ifName } };
     }
+    // no interface → remove interface config
+    if (isNo && (pFirst === "interface" || pFirst === "int")) {
+      const rest = positiveCmd.replace(/^(interface|int)\s+/i, "");
+      const ifName = normalizeInterface(rest);
+      const newCfg = { ...state.interfaceCfg };
+      delete newCfg[ifName];
+      return { output: "", state: { ...state, interfaceCfg: newCfg } };
+    }
     // Line
-    if (first === "line") {
-      const lineName = parts.slice(1).join(" ");
+    if (pFirst === "line" && !isNo) {
+      const lineName = positiveParts.slice(1).join(" ");
       if (!state.lineCfg[lineName]) state.lineCfg[lineName] = [];
       return { output: "", state: { ...state, mode: "config-line", currentLine: lineName } };
     }
     // Router
-    if (first === "router") {
-      const routerName = parts.slice(1).join(" ");
+    if (pFirst === "router" && !isNo) {
+      const routerName = positiveParts.slice(1).join(" ");
       if (!state.routerCfg[routerName]) state.routerCfg[routerName] = [];
       return { output: "", state: { ...state, mode: "config-router", currentRouter: routerName } };
     }
+    // no router → remove router config
+    if (isNo && pFirst === "router") {
+      const routerName = positiveParts.slice(1).join(" ");
+      const newCfg = { ...state.routerCfg };
+      delete newCfg[routerName];
+      return { output: "", state: { ...state, routerCfg: newCfg } };
+    }
     // VLAN
-    if (first === "vlan") {
-      const vid = parts[1];
+    if (pFirst === "vlan" && !isNo) {
+      const vid = positiveParts[1];
       return { output: "", state: { ...state, mode: "config-vlan", currentVlan: vid, vlans: { ...state.vlans, [vid]: state.vlans[vid] || "" } } };
     }
+    // no vlan → delete vlan
+    if (isNo && pFirst === "vlan") {
+      const vid = positiveParts[1];
+      const newVlans = { ...state.vlans }; delete newVlans[vid];
+      const newVlanCfg = { ...state.vlanCfg }; delete newVlanCfg[vid];
+      return { output: "", state: { ...state, vlans: newVlans, vlanCfg: newVlanCfg } };
+    }
     // Named ACL
-    if (first === "ip" && parts[1] === "access-list") {
-      const isExtended = parts[2] === "extended";
-      const isStandard = parts[2] === "standard";
-      const aclName = isExtended ? parts.slice(3).join(" ") : isStandard ? parts.slice(3).join(" ") : parts.slice(2).join(" ");
+    if (pFirst === "ip" && positiveParts[1] === "access-list" && !isNo) {
+      const isExtended = positiveParts[2] === "extended";
+      const isStandard = positiveParts[2] === "standard";
+      const aclName = (isExtended || isStandard) ? positiveParts.slice(3).join(" ") : positiveParts.slice(2).join(" ");
       if (!state.aclCfg[aclName]) state.aclCfg[aclName] = [];
+      state.globalCmds = cfgAdd(state.globalCmds, positiveCmd);
       return { output: "", state: { ...state, mode: isExtended ? "config-ext-acl" : "config-acl", currentAcl: aclName } };
     }
+    // no ip access-list → remove ACL
+    if (isNo && pFirst === "ip" && positiveParts[1] === "access-list") {
+      const isExt = positiveParts[2] === "extended";
+      const isStd = positiveParts[2] === "standard";
+      const aclName = (isExt || isStd) ? positiveParts.slice(3).join(" ") : positiveParts.slice(2).join(" ");
+      const newAcl = { ...state.aclCfg }; delete newAcl[aclName];
+      state.globalCmds = cfgRemove(state.globalCmds, lc);
+      return { output: "", state: { ...state, aclCfg: newAcl, globalCmds: state.globalCmds } };
+    }
     // DHCP pool
-    if (first === "ip" && parts[1] === "dhcp" && parts[2] === "pool") {
-      const poolName = parts.slice(3).join(" ");
+    if (pFirst === "ip" && positiveParts[1] === "dhcp" && positiveParts[2] === "pool" && !isNo) {
+      const poolName = positiveParts.slice(3).join(" ");
       if (!state.dhcpCfg[poolName]) state.dhcpCfg[poolName] = [];
       return { output: "", state: { ...state, mode: "config-dhcp", currentDhcpPool: poolName } };
     }
     // DHCP excluded
-    if (first === "ip" && parts[1] === "dhcp" && parts[2] === "excluded-address") {
-      state.dhcpExcluded = [...state.dhcpExcluded, lc];
-      state.globalCmds = [...state.globalCmds, lc];
+    if (pFirst === "ip" && positiveParts[1] === "dhcp" && positiveParts[2] === "excluded-address") {
+      if (isNo) {
+        state.dhcpExcluded = state.dhcpExcluded.filter(x => x !== positiveCmd);
+        state.globalCmds = cfgRemove(state.globalCmds, lc);
+      } else {
+        state.dhcpExcluded = cfgAdd(state.dhcpExcluded, lc);
+        state.globalCmds = cfgAdd(state.globalCmds, lc);
+      }
       return { output: "", state };
     }
     // DHCP snooping
-    if (first === "ip" && parts[1] === "dhcp" && parts[2] === "snooping") {
-      if (parts.length === 3) {
+    if (pFirst === "ip" && positiveParts[1] === "dhcp" && positiveParts[2] === "snooping") {
+      if (isNo) {
+        state.dhcpSnooping = { ...state.dhcpSnooping, options: { ...state.dhcpSnooping.options, [positiveParts.slice(3).join(" ")]: false } };
+        state.globalCmds = cfgAdd(state.globalCmds, lc);
+      } else if (positiveParts.length === 3) {
         state.dhcpSnooping = { ...state.dhcpSnooping, enabled: true };
-      } else if (parts[3] === "vlan") {
-        state.dhcpSnooping = { ...state.dhcpSnooping, vlans: [...state.dhcpSnooping.vlans, parts[4]] };
+        state.globalCmds = cfgAdd(state.globalCmds, lc);
+      } else if (positiveParts[3] === "vlan") {
+        const vid = positiveParts[4];
+        if (!state.dhcpSnooping.vlans.includes(vid)) {
+          state.dhcpSnooping = { ...state.dhcpSnooping, vlans: [...state.dhcpSnooping.vlans, vid] };
+        }
+        state.globalCmds = cfgAdd(state.globalCmds, lc);
+      } else {
+        state.globalCmds = cfgAdd(state.globalCmds, lc);
       }
-      state.globalCmds = [...state.globalCmds, lc];
-      return { output: "", state };
-    }
-    if (first === "no" && parts[1] === "ip" && parts[2] === "dhcp" && parts[3] === "snooping") {
-      state.dhcpSnooping = { ...state.dhcpSnooping, options: { ...state.dhcpSnooping.options, [parts.slice(4).join(" ")]: false } };
-      state.globalCmds = [...state.globalCmds, lc];
       return { output: "", state };
     }
     // DAI
-    if (first === "ip" && parts[1] === "arp" && parts[2] === "inspection") {
-      if (parts[3] === "vlan") {
-        state.daiConfig = { ...state.daiConfig, vlans: [...state.daiConfig.vlans, parts[4]] };
-      } else if (parts[3] === "validate") {
-        state.daiConfig = { ...state.daiConfig, validate: parts.slice(4) };
+    if (pFirst === "ip" && positiveParts[1] === "arp" && positiveParts[2] === "inspection") {
+      if (positiveParts[3] === "vlan") {
+        const vid = positiveParts[4];
+        if (isNo) {
+          state.daiConfig = { ...state.daiConfig, vlans: state.daiConfig.vlans.filter(v => v !== vid) };
+        } else if (!state.daiConfig.vlans.includes(vid)) {
+          state.daiConfig = { ...state.daiConfig, vlans: [...state.daiConfig.vlans, vid] };
+        }
+      } else if (positiveParts[3] === "validate") {
+        state.daiConfig = { ...state.daiConfig, validate: isNo ? [] : positiveParts.slice(4) };
       }
-      state.globalCmds = [...state.globalCmds, lc];
+      state.globalCmds = isNo ? cfgRemove(state.globalCmds, lc) : cfgAdd(state.globalCmds, lc);
       return { output: "", state };
     }
-    // Static route IPv4
-    if (first === "ip" && parts[1] === "route") {
-      state.staticRoutes = [...state.staticRoutes, lc];
-      state.globalCmds = [...state.globalCmds, lc];
+    // Static route IPv4: "ip route" / "no ip route"
+    if (pFirst === "ip" && positiveParts[1] === "route") {
+      if (isNo) {
+        state.staticRoutes = state.staticRoutes.filter(r => r !== positiveCmd);
+        state.globalCmds = state.globalCmds.filter(r => r !== positiveCmd);
+        return { output: "", state };
+      }
+      state.staticRoutes = cfgAdd(state.staticRoutes, lc);
+      state.globalCmds = cfgAdd(state.globalCmds, lc);
       return { output: "", state };
     }
     // Static route IPv6
-    if (first === "ipv6" && parts[1] === "route") {
-      state.staticRoutesV6 = [...state.staticRoutesV6, lc];
-      state.globalCmds = [...state.globalCmds, lc];
+    if (pFirst === "ipv6" && positiveParts[1] === "route") {
+      if (isNo) {
+        state.staticRoutesV6 = state.staticRoutesV6.filter(r => r !== positiveCmd);
+        state.globalCmds = state.globalCmds.filter(r => r !== positiveCmd);
+        return { output: "", state };
+      }
+      state.staticRoutesV6 = cfgAdd(state.staticRoutesV6, lc);
+      state.globalCmds = cfgAdd(state.globalCmds, lc);
       return { output: "", state };
     }
     // NAT
-    if (first === "ip" && parts[1] === "nat") {
-      state.natRules = [...state.natRules, lc];
-      state.globalCmds = [...state.globalCmds, lc];
+    if (pFirst === "ip" && positiveParts[1] === "nat") {
+      if (isNo) {
+        state.natRules = state.natRules.filter(r => r !== positiveCmd);
+        state.globalCmds = state.globalCmds.filter(r => r !== positiveCmd);
+      } else {
+        state.natRules = cfgAdd(state.natRules, lc);
+        state.globalCmds = cfgAdd(state.globalCmds, lc);
+      }
       return { output: "", state };
     }
     // Username
-    if (first === "username") {
-      const username = parts[1];
-      state.users = [...state.users, { cmd: lc, username }];
-      state.globalCmds = [...state.globalCmds, lc];
+    if (pFirst === "username") {
+      const username = positiveParts[1];
+      if (isNo) {
+        state.users = state.users.filter(u => u.username !== username);
+        state.globalCmds = state.globalCmds.filter(c => !(c.startsWith("username " + username)));
+      } else {
+        // Replace existing user or add new
+        state.users = [...state.users.filter(u => u.username !== username), { cmd: lc, username }];
+        state.globalCmds = [...state.globalCmds.filter(c => !(c.startsWith("username " + username))), lc];
+      }
       return { output: "", state };
     }
     // Hostname
-    if (first === "hostname") {
+    if (pFirst === "hostname" && !isNo) {
       const newName = rawCmd.split(/\s+/)[1] || state.hostname;
       state.hostname = newName;
-      state.globalCmds = [...state.globalCmds, lc];
+      state.globalCmds = cfgAdd(state.globalCmds, lc);
       return { output: "", state };
     }
     // Crypto key
-    if (first === "crypto" && parts[1] === "key") {
+    if (pFirst === "crypto" && positiveParts[1] === "key" && !isNo) {
       state.sshConfigured = true;
       const bits = parts.find(p => /^\d{3,4}$/.test(p)) || "1024";
-      state.globalCmds = [...state.globalCmds, lc];
+      state.globalCmds = cfgAdd(state.globalCmds, lc);
       return {
         output: `The name for the keys will be: ${state.hostname}.lab.local\n% Generating ${bits} bit RSA keys...\n[OK]`,
         state
       };
     }
     // NTP
-    if (first === "ntp") {
-      state.ntpConfig = { ...state.ntpConfig, [parts.slice(1).join(" ")]: true };
-      state.globalCmds = [...state.globalCmds, lc];
+    if (pFirst === "ntp") {
+      if (isNo) {
+        const key = positiveParts.slice(1).join(" ");
+        const newNtp = { ...state.ntpConfig }; delete newNtp[key];
+        state.ntpConfig = newNtp;
+        state.globalCmds = state.globalCmds.filter(c => c !== positiveCmd);
+      } else {
+        state.ntpConfig = { ...state.ntpConfig, [parts.slice(1).join(" ")]: true };
+        state.globalCmds = cfgAdd(state.globalCmds, lc);
+      }
       return { output: "", state };
     }
-    // CDP
-    if (first === "cdp" && parts[1] === "run") { state.cdpGlobal = true; state.globalCmds = [...state.globalCmds, lc]; return { output: "", state }; }
-    if (first === "no" && parts[1] === "cdp" && parts[2] === "run") { state.cdpGlobal = false; state.globalCmds = [...state.globalCmds, lc]; return { output: "", state }; }
-    // LLDP
-    if (first === "lldp" && parts[1] === "run") { state.lldpGlobal = true; state.globalCmds = [...state.globalCmds, lc]; return { output: "", state }; }
-    if (first === "no" && parts[1] === "lldp") { state.lldpGlobal = false; state.globalCmds = [...state.globalCmds, lc]; return { output: "", state }; }
-    // ipv6 unicast-routing
-    if (first === "ipv6") {
-      state.globalCmds = [...state.globalCmds, lc];
+    // CDP global
+    if ((pFirst === "cdp" && positiveParts[1] === "run") || (isNo && pFirst === "cdp" && positiveParts[1] === "run")) {
+      state.cdpGlobal = !isNo;
+      state.globalCmds = isNo ? cfgRemove(state.globalCmds, "cdp run") : cfgAdd(state.globalCmds, "cdp run");
+      state.globalCmds = state.globalCmds.filter(c => c !== "no cdp run");
+      if (isNo) state.globalCmds = cfgAdd(state.globalCmds, "no cdp run");
       return { output: "", state };
     }
-    // no command (generic)
-    if (first === "no") {
-      state.globalCmds = [...state.globalCmds, lc];
+    // LLDP global
+    if (pFirst === "lldp" && positiveParts[1] === "run") {
+      state.lldpGlobal = !isNo;
+      state.globalCmds = isNo ? cfgRemove(state.globalCmds, "lldp run") : cfgAdd(state.globalCmds, "lldp run");
       return { output: "", state };
     }
-    // Catch all config commands
-    state.globalCmds = [...state.globalCmds, lc];
+    // ip domain-name (for SSH)
+    if (pFirst === "ip" && positiveParts[1] === "domain-name") {
+      if (isNo) {
+        state.globalCmds = state.globalCmds.filter(c => !c.startsWith("ip domain-name"));
+      } else {
+        state.globalCmds = [...state.globalCmds.filter(c => !c.startsWith("ip domain-name")), lc];
+      }
+      return { output: "", state };
+    }
+    // ipv6 unicast-routing and others
+    if (pFirst === "ipv6") {
+      if (isNo) { state.globalCmds = cfgRemove(state.globalCmds, lc); }
+      else { state.globalCmds = cfgAdd(state.globalCmds, lc); }
+      return { output: "", state };
+    }
+    // Generic no command in global config
+    if (isNo) {
+      state.globalCmds = cfgRemove(state.globalCmds, lc);
+      return { output: "", state };
+    }
+    // Catch all
+    state.globalCmds = cfgAdd(state.globalCmds, lc);
     return { output: "", state };
   }
 
@@ -1162,67 +1295,96 @@ function processCommand(input, state) {
   if (state.mode === "config-if" || state.mode === "config-subif") {
     const iface = state.currentInterface;
     const rangeIfs = state._rangeInterfaces || [iface];
+    const isNo = first === "no";
+    const positiveCmd = isNo ? lc.replace(/^no\s+/, "") : lc;
+    const positiveParts = isNo ? parts.slice(1) : parts;
+    const pFirst = positiveParts[0];
+
+    // Navigate to another interface
+    if ((first === "interface" || first === "int") && !isNo) {
+      const rest = rawCmd.replace(/^(interface|int)\s+/i, "");
+      const newIf = normalizeInterface(rest);
+      if (!state.interfaceCfg[newIf]) state.interfaceCfg[newIf] = [];
+      return { output: "", state: { ...state, mode: "config-if", currentInterface: newIf, _rangeInterfaces: undefined } };
+    }
 
     // Apply to all interfaces in range
     const newIfCfg = { ...state.interfaceCfg };
     for (const ifn of rangeIfs) {
       if (!newIfCfg[ifn]) newIfCfg[ifn] = [];
-      newIfCfg[ifn] = [...newIfCfg[ifn], lc];
+      if (isNo) {
+        newIfCfg[ifn] = cfgRemove(newIfCfg[ifn], lc);
+      } else {
+        newIfCfg[ifn] = cfgAdd(newIfCfg[ifn], lc);
+      }
     }
 
     // Track specific state changes
-    if (first === "ip" && parts[1] === "address") {
-      const addr = parts.slice(2).join(" ");
+    if (pFirst === "ip" && positiveParts[1] === "address") {
       const newIfs = { ...state.interfaces };
-      for (const ifn of rangeIfs) {
-        newIfs[ifn] = { ...newIfs[ifn], ip: addr, status: "up" };
+      if (isNo) {
+        for (const ifn of rangeIfs) { newIfs[ifn] = { ...newIfs[ifn], ip: undefined }; }
+      } else {
+        const addr = parts.slice(2).join(" ");
+        for (const ifn of rangeIfs) { newIfs[ifn] = { ...newIfs[ifn], ip: addr, status: "up" }; }
       }
       return { output: "", state: { ...state, interfaces: newIfs, interfaceCfg: newIfCfg } };
     }
-    if (first === "ipv6" && parts[1] === "address") {
-      const addr = parts.slice(2).join(" ");
+    if (pFirst === "ipv6" && positiveParts[1] === "address") {
       const newIfs = { ...state.interfaces };
-      for (const ifn of rangeIfs) {
-        newIfs[ifn] = { ...newIfs[ifn], ipv6: addr, status: "up" };
+      if (isNo) {
+        for (const ifn of rangeIfs) { newIfs[ifn] = { ...newIfs[ifn], ipv6: undefined }; }
+      } else {
+        const addr = parts.slice(2).join(" ");
+        for (const ifn of rangeIfs) { newIfs[ifn] = { ...newIfs[ifn], ipv6: addr, status: "up" }; }
       }
       return { output: "", state: { ...state, interfaces: newIfs, interfaceCfg: newIfCfg } };
     }
-    if (first === "no" && parts[1] === "shutdown") {
+    if (lc === "no shutdown") {
       const newIfs = { ...state.interfaces };
       for (const ifn of rangeIfs) { newIfs[ifn] = { ...newIfs[ifn], status: "up" }; }
       return { output: "", state: { ...state, interfaces: newIfs, interfaceCfg: newIfCfg } };
     }
-    if (first === "shutdown") {
+    if (lc === "shutdown") {
       const newIfs = { ...state.interfaces };
       for (const ifn of rangeIfs) { newIfs[ifn] = { ...newIfs[ifn], status: "administratively down" }; }
       return { output: "", state: { ...state, interfaces: newIfs, interfaceCfg: newIfCfg } };
     }
     // Port security
-    if (lc.includes("port-security")) {
+    if (positiveCmd.includes("port-security")) {
       const newPS = { ...state.portSecurity };
       for (const ifn of rangeIfs) {
         if (!newPS[ifn]) newPS[ifn] = {};
-        if (parts.includes("maximum")) newPS[ifn].max = parts[parts.indexOf("maximum") + 1];
-        if (parts.includes("violation")) newPS[ifn].violation = parts[parts.indexOf("violation") + 1];
-        if (lc === "switchport port-security") newPS[ifn].enabled = true;
+        if (isNo) {
+          if (positiveCmd === "switchport port-security") newPS[ifn].enabled = false;
+          if (positiveParts.includes("maximum")) delete newPS[ifn].max;
+          if (positiveParts.includes("violation")) delete newPS[ifn].violation;
+        } else {
+          if (positiveParts.includes("maximum")) newPS[ifn].max = positiveParts[positiveParts.indexOf("maximum") + 1];
+          if (positiveParts.includes("violation")) newPS[ifn].violation = positiveParts[positiveParts.indexOf("violation") + 1];
+          if (lc === "switchport port-security") newPS[ifn].enabled = true;
+        }
       }
       return { output: "", state: { ...state, portSecurity: newPS, interfaceCfg: newIfCfg } };
     }
     // DHCP snooping trust on interface
-    if (first === "ip" && parts[1] === "dhcp" && parts[2] === "snooping" && parts[3] === "trust") {
-      state.dhcpSnooping = { ...state.dhcpSnooping, trusted: [...(state.dhcpSnooping.trusted || []), iface] };
+    if (pFirst === "ip" && positiveParts[1] === "dhcp" && positiveParts[2] === "snooping" && positiveParts[3] === "trust") {
+      if (isNo) {
+        state.dhcpSnooping = { ...state.dhcpSnooping, trusted: (state.dhcpSnooping.trusted || []).filter(x => x !== iface) };
+      } else {
+        const trusted = state.dhcpSnooping.trusted || [];
+        if (!trusted.includes(iface)) {
+          state.dhcpSnooping = { ...state.dhcpSnooping, trusted: [...trusted, iface] };
+        }
+      }
       return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
     }
     // Channel-group
-    if (first === "channel-group") {
-      return { output: `Creating a port-channel interface Port-channel${parts[1]}`, state: { ...state, interfaceCfg: newIfCfg } };
-    }
-    // Navigate to another interface
-    if (first === "interface" || first === "int") {
-      const rest = rawCmd.replace(/^(interface|int)\s+/i, "");
-      const newIf = normalizeInterface(rest);
-      if (!newIfCfg[newIf]) newIfCfg[newIf] = [];
-      return { output: "", state: { ...state, mode: "config-if", currentInterface: newIf, interfaceCfg: newIfCfg, _rangeInterfaces: undefined } };
+    if (pFirst === "channel-group") {
+      if (isNo) {
+        return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
+      }
+      return { output: `Creating a port-channel interface Port-channel${positiveParts[1]}`, state: { ...state, interfaceCfg: newIfCfg } };
     }
     return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
   }
@@ -1232,7 +1394,11 @@ function processCommand(input, state) {
     const line = state.currentLine;
     const newLineCfg = { ...state.lineCfg };
     if (!newLineCfg[line]) newLineCfg[line] = [];
-    newLineCfg[line] = [...newLineCfg[line], lc];
+    if (first === "no") {
+      newLineCfg[line] = cfgRemove(newLineCfg[line], lc);
+    } else {
+      newLineCfg[line] = cfgAdd(newLineCfg[line], lc);
+    }
     return { output: "", state: { ...state, lineCfg: newLineCfg } };
   }
 
@@ -1241,13 +1407,29 @@ function processCommand(input, state) {
     const router = state.currentRouter;
     const newRtrCfg = { ...state.routerCfg };
     if (!newRtrCfg[router]) newRtrCfg[router] = [];
-    newRtrCfg[router] = [...newRtrCfg[router], lc];
-    if (first === "router-id") {
-      state.ospfConfig = { ...state.ospfConfig, routerId: parts[1] };
-    }
-    if (first === "network") {
-      const nets = state.ospfConfig.networks || [];
-      state.ospfConfig = { ...state.ospfConfig, networks: [...nets, lc] };
+    const isNo = first === "no";
+    const positiveParts = isNo ? parts.slice(1) : parts;
+    const pFirst = positiveParts[0];
+
+    if (isNo) {
+      newRtrCfg[router] = cfgRemove(newRtrCfg[router], lc);
+      if (pFirst === "network") {
+        const nets = (state.ospfConfig.networks || []).filter(n => n !== lc.replace(/^no\s+/, ""));
+        state.ospfConfig = { ...state.ospfConfig, networks: nets };
+      }
+    } else {
+      newRtrCfg[router] = cfgAdd(newRtrCfg[router], lc);
+      if (pFirst === "router-id") {
+        // Replace existing router-id
+        newRtrCfg[router] = newRtrCfg[router].filter(c => !c.startsWith("router-id") || c === lc);
+        state.ospfConfig = { ...state.ospfConfig, routerId: parts[1] };
+      }
+      if (pFirst === "network") {
+        const nets = state.ospfConfig.networks || [];
+        if (!nets.includes(lc)) {
+          state.ospfConfig = { ...state.ospfConfig, networks: [...nets, lc] };
+        }
+      }
     }
     return { output: "", state: { ...state, routerCfg: newRtrCfg } };
   }
@@ -1266,7 +1448,11 @@ function processCommand(input, state) {
     const acl = state.currentAcl;
     const newAclCfg = { ...state.aclCfg };
     if (!newAclCfg[acl]) newAclCfg[acl] = [];
-    newAclCfg[acl] = [...newAclCfg[acl], lc];
+    if (first === "no") {
+      newAclCfg[acl] = cfgRemove(newAclCfg[acl], lc);
+    } else {
+      newAclCfg[acl] = cfgAdd(newAclCfg[acl], lc);
+    }
     return { output: "", state: { ...state, aclCfg: newAclCfg } };
   }
 
@@ -1275,7 +1461,11 @@ function processCommand(input, state) {
     const pool = state.currentDhcpPool;
     const newDhcpCfg = { ...state.dhcpCfg };
     if (!newDhcpCfg[pool]) newDhcpCfg[pool] = [];
-    newDhcpCfg[pool] = [...newDhcpCfg[pool], lc];
+    if (first === "no") {
+      newDhcpCfg[pool] = cfgRemove(newDhcpCfg[pool], lc);
+    } else {
+      newDhcpCfg[pool] = cfgAdd(newDhcpCfg[pool], lc);
+    }
     return { output: "", state: { ...state, dhcpCfg: newDhcpCfg } };
   }
 
@@ -1496,9 +1686,14 @@ function buildRunningConfig(state) {
   // Users
   state.users.forEach(u => lines.push(u.cmd));
   if (state.users.length) lines.push("!");
-  // Global commands (filtered for display)
+  // Global commands (filter out items shown in dedicated sections)
+  const skipPrefixes = [
+    "username", "cdp", "no cdp", "lldp", "no lldp", "ntp",
+    "ip route", "ipv6 route", "ip nat", "ip dhcp",
+    "ip access-list", "ip arp inspection", "hostname",
+  ];
   const displayGlobal = state.globalCmds.filter(c =>
-    !c.startsWith("username") && !c.startsWith("cdp") && !c.startsWith("lldp") && !c.startsWith("ntp")
+    !skipPrefixes.some(p => c.startsWith(p))
   );
   displayGlobal.forEach(c => lines.push(c));
   if (displayGlobal.length) lines.push("!");
@@ -1507,13 +1702,30 @@ function buildRunningConfig(state) {
   if (!state.cdpGlobal) lines.push("no cdp run");
   // NTP
   Object.keys(state.ntpConfig).forEach(k => lines.push(`ntp ${k}`));
+  // DHCP Snooping global
+  if (state.dhcpSnooping.enabled) lines.push("ip dhcp snooping");
+  state.dhcpSnooping.vlans.forEach(v => lines.push(`ip dhcp snooping vlan ${v}`));
+  if (state.dhcpSnooping.options) {
+    Object.entries(state.dhcpSnooping.options).forEach(([k, v]) => {
+      if (v === false) lines.push(`no ip dhcp snooping ${k}`);
+    });
+  }
+  // DAI
+  state.daiConfig.vlans.forEach(v => lines.push(`ip arp inspection vlan ${v}`));
+  if (state.daiConfig.validate.length) lines.push(`ip arp inspection validate ${state.daiConfig.validate.join(" ")}`);
+  // DHCP Snooping verify
+  const snoopVerify = state.globalCmds.filter(c => c.startsWith("ip dhcp snooping verify"));
+  snoopVerify.forEach(c => lines.push(c));
+  if (state.dhcpSnooping.enabled || state.daiConfig.vlans.length || snoopVerify.length) lines.push("!");
   // ACLs
   Object.entries(state.aclCfg).forEach(([name, entries]) => {
-    lines.push(`ip access-list ${name}`);
+    // Find the original ACL type from globalCmds
+    const aclDef = state.globalCmds.find(c => c.includes("access-list") && c.includes(name));
+    lines.push(aclDef || `ip access-list extended ${name}`);
     entries.forEach(e => lines.push(` ${e}`));
     lines.push("!");
   });
-  // DHCP
+  // DHCP excluded + pools
   state.dhcpExcluded.forEach(c => lines.push(c));
   Object.entries(state.dhcpCfg).forEach(([name, entries]) => {
     lines.push(`ip dhcp pool ${name}`);
@@ -1522,9 +1734,10 @@ function buildRunningConfig(state) {
   });
   // Static routes
   state.staticRoutes.forEach(r => lines.push(r));
-  state.staticRoutesV6.forEach(r => lines.push(r));
+  (state.staticRoutesV6 || []).forEach(r => lines.push(r));
   // NAT
   state.natRules.forEach(r => lines.push(r));
+  if (state.staticRoutes.length || (state.staticRoutesV6 || []).length || state.natRules.length) lines.push("!");
   // VLANs
   Object.entries(state.vlanCfg).forEach(([id, name]) => {
     lines.push(`vlan ${id}`);
@@ -1652,20 +1865,33 @@ function checkTaskCompletion(task, deviceStates) {
   const ds = deviceStates[task.device];
   if (!ds || !task.check) return false;
 
-  // Collect ALL commands entered on this device (lowercased)
-  const allCmds = [
-    ...ds.globalCmds,
-    ...Object.values(ds.interfaceCfg).flat(),
-    ...Object.values(ds.lineCfg).flat(),
-    ...Object.values(ds.routerCfg).flat(),
-    ...Object.values(ds.aclCfg).flat(),
-    ...Object.values(ds.dhcpCfg).flat(),
-    ...(ds.allCommands || []).map(c => c.lower),
-  ];
+  // Collect ALL current config commands on this device (lowercased, no dupes)
+  const allCmds = new Set();
+  // Global commands
+  ds.globalCmds.forEach(c => allCmds.add(c));
+  // Interface config
+  Object.values(ds.interfaceCfg).forEach(arr => arr.forEach(c => allCmds.add(c)));
+  // Line config
+  Object.values(ds.lineCfg).forEach(arr => arr.forEach(c => allCmds.add(c)));
+  // Router config
+  Object.values(ds.routerCfg).forEach(arr => arr.forEach(c => allCmds.add(c)));
+  // ACL config
+  Object.values(ds.aclCfg).forEach(arr => arr.forEach(c => allCmds.add(c)));
+  // DHCP config
+  Object.values(ds.dhcpCfg).forEach(arr => arr.forEach(c => allCmds.add(c)));
+  // Static routes
+  ds.staticRoutes.forEach(c => allCmds.add(c));
+  (ds.staticRoutesV6 || []).forEach(c => allCmds.add(c));
+  // NAT rules
+  ds.natRules.forEach(c => allCmds.add(c));
+  // DHCP excluded
+  ds.dhcpExcluded.forEach(c => allCmds.add(c));
 
-  // For each required check pattern, find if any command matches ALL keywords
+  const cmdArr = Array.from(allCmds);
+
+  // For each required check pattern, find if any current command matches ALL keywords
   for (const keywords of task.check) {
-    const found = allCmds.some(cmd => {
+    const found = cmdArr.some(cmd => {
       return keywords.every(kw => cmd.includes(kw.toLowerCase()));
     });
     if (!found) return false;
