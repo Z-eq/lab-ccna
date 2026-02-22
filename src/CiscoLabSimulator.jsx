@@ -1304,14 +1304,35 @@ function processCommand(input, state) {
       else { state.globalCmds = cfgAdd(state.globalCmds, lc); }
       return { output: "", state };
     }
-    // Generic no command in global config
+    // ─── Known global config prefixes (accept + store) ───
+    const knownGlobalPrefixes = [
+      "service ", "no service ", "boot ", "logging ", "enable ", "banner ",
+      "ip domain", "ip name", "ip ssh", "ip default", "ip classless",
+      "ip cef", "no ip domain", "ip http", "no ip http",
+      "access-list ", "ip access-group",
+      "snmp", "aaa ", "tacacs", "radius",
+    ];
+    const matchesKnown = knownGlobalPrefixes.some(p => lc.startsWith(p));
+    if (matchesKnown) {
+      if (isNo) { state.globalCmds = cfgRemove(state.globalCmds, lc); }
+      else { state.globalCmds = cfgAdd(state.globalCmds, lc); }
+      return { output: "", state };
+    }
+    // Generic no command for known prefixes
     if (isNo) {
+      // Check if the positive form exists in config
+      const posCmd = lc.replace(/^no\s+/, "");
+      const existed = state.globalCmds.some(c => c.startsWith(posCmd.split(/\s+/)[0]));
+      if (existed) {
+        state.globalCmds = cfgRemove(state.globalCmds, lc);
+        return { output: "", state };
+      }
+      // Still allow "no" for known command families
       state.globalCmds = cfgRemove(state.globalCmds, lc);
       return { output: "", state };
     }
-    // Catch all
-    state.globalCmds = cfgAdd(state.globalCmds, lc);
-    return { output: "", state };
+    // ─── REJECT unknown commands ───
+    return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
   }
 
   // ─── INTERFACE CONFIG ────
@@ -1341,7 +1362,23 @@ function processCommand(input, state) {
       return { output: "", state: { ...state, mode: "config-if", currentInterface: newIf, _rangeInterfaces: undefined } };
     }
 
-    // Apply to all interfaces in range
+    // ─── VALIDATE command before storing ───
+    const validIfPrefixes = [
+      "switchport ", "ip address", "ip nat ", "ip ospf", "ip dhcp", "ip access-group",
+      "ip helper-address", "ip proxy-arp",
+      "ipv6 address", "ipv6 ospf", "ipv6 nd", "ipv6 enable",
+      "shutdown", "no shutdown", "no switchport", "no ip", "no ipv6", "no spanning",
+      "no cdp", "no lldp", "no channel",
+      "channel-group ", "spanning-tree ", "cdp ", "lldp ", "description ",
+      "speed ", "duplex ", "media-type ", "negotiation ",
+      "ip arp inspection", "storm-control ",
+    ];
+    const isValid = isNo || validIfPrefixes.some(p => lc.startsWith(p)) || lc === "shutdown";
+    if (!isValid) {
+      return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
+    }
+
+    // ─── Apply validated command to config ───
     const newIfCfg = { ...state.interfaceCfg };
     for (const ifn of rangeIfs) {
       if (!newIfCfg[ifn]) newIfCfg[ifn] = [];
@@ -1419,23 +1456,24 @@ function processCommand(input, state) {
       }
       return { output: `Creating a port-channel interface Port-channel${positiveParts[1]}`, state: { ...state, interfaceCfg: newIfCfg } };
     }
-    // spanning-tree portfast / bpduguard (stored in interfaceCfg via cfgAdd above)
-    if (pFirst === "spanning-tree") {
-      return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
-    }
-    // switchport nonegotiate (stored in interfaceCfg via cfgAdd above)
-    if (positiveCmd === "switchport nonegotiate") {
-      return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
-    }
+    // All other validated commands (spanning-tree, cdp, lldp, description, etc.)
     return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
   }
 
   // ─── LINE CONFIG ────
   if (state.mode === "config-line") {
     const line = state.currentLine;
+    const validLinePrefixes = [
+      "login", "password ", "transport ", "exec-timeout", "logging ",
+      "access-class ", "privilege ", "length ", "no ",
+    ];
+    const isNo = first === "no";
+    if (!isNo && !validLinePrefixes.some(p => lc.startsWith(p))) {
+      return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
+    }
     const newLineCfg = { ...state.lineCfg };
     if (!newLineCfg[line]) newLineCfg[line] = [];
-    if (first === "no") {
+    if (isNo) {
       newLineCfg[line] = cfgRemove(newLineCfg[line], lc);
     } else {
       newLineCfg[line] = cfgAdd(newLineCfg[line], lc);
@@ -1446,9 +1484,17 @@ function processCommand(input, state) {
   // ─── ROUTER CONFIG ────
   if (state.mode === "config-router") {
     const router = state.currentRouter;
+    const validRtrPrefixes = [
+      "network ", "router-id ", "passive-interface", "redistribute ",
+      "log-adjacency", "auto-cost", "default-information", "distance ",
+      "area ", "no ",
+    ];
+    const isNo = first === "no";
+    if (!isNo && !validRtrPrefixes.some(p => lc.startsWith(p))) {
+      return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
+    }
     const newRtrCfg = { ...state.routerCfg };
     if (!newRtrCfg[router]) newRtrCfg[router] = [];
-    const isNo = first === "no";
     const positiveParts = isNo ? parts.slice(1) : parts;
     const pFirst = positiveParts[0];
 
@@ -1461,7 +1507,6 @@ function processCommand(input, state) {
     } else {
       newRtrCfg[router] = cfgAdd(newRtrCfg[router], lc);
       if (pFirst === "router-id") {
-        // Replace existing router-id
         newRtrCfg[router] = newRtrCfg[router].filter(c => !c.startsWith("router-id") || c === lc);
         state.ospfConfig = { ...state.ospfConfig, routerId: parts[1] };
       }
@@ -1481,12 +1526,17 @@ function processCommand(input, state) {
       const name = rawCmd.replace(/^name\s+/i, "");
       return { output: "", state: { ...state, vlans: { ...state.vlans, [state.currentVlan]: name }, vlanCfg: { ...state.vlanCfg, [state.currentVlan]: name } } };
     }
-    return { output: "", state };
+    if (first === "no") return { output: "", state };
+    return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
   }
 
   // ─── ACL CONFIG ────
   if (state.mode === "config-acl" || state.mode === "config-ext-acl") {
     const acl = state.currentAcl;
+    const validAclPrefixes = ["permit ", "deny ", "remark ", "no "];
+    if (!validAclPrefixes.some(p => lc.startsWith(p))) {
+      return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
+    }
     const newAclCfg = { ...state.aclCfg };
     if (!newAclCfg[acl]) newAclCfg[acl] = [];
     if (first === "no") {
@@ -1500,6 +1550,13 @@ function processCommand(input, state) {
   // ─── DHCP POOL CONFIG ────
   if (state.mode === "config-dhcp") {
     const pool = state.currentDhcpPool;
+    const validDhcpPrefixes = [
+      "network ", "default-router ", "dns-server ", "domain-name ",
+      "lease ", "option ", "no ",
+    ];
+    if (!validDhcpPrefixes.some(p => lc.startsWith(p))) {
+      return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
+    }
     const newDhcpCfg = { ...state.dhcpCfg };
     if (!newDhcpCfg[pool]) newDhcpCfg[pool] = [];
     if (first === "no") {
