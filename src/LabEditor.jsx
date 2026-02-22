@@ -1,10 +1,17 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { LABS } from "./CiscoLabSimulator";
 
 // ─── CCNA LAB EDITOR ────────────────────────────────────────────────────────
 // Side app for creating/editing labs for the Cisco Lab Simulator
 // Outputs JSON that can be pasted directly into the LABS array
 
 const CATEGORIES = ["Routing", "Switching", "IP Services", "Security", "IPv6"];
+
+// Group existing labs by category for template selection
+const LABS_BY_CATEGORY = CATEGORIES.reduce((acc, cat) => {
+  acc[cat] = LABS.filter(l => l.category === cat);
+  return acc;
+}, {});
 const DEVICE_TYPES = ["router", "switch"];
 const COMMON_INTERFACES = [
   "Ethernet0/0", "Ethernet0/1", "Ethernet0/2", "Ethernet0/3",
@@ -637,14 +644,48 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
 
       <div style={{ display: "flex", maxWidth: 1400, margin: "0 auto", gap: 0, minHeight: "calc(100vh - 60px)" }}>
         {/* ─── LEFT SIDEBAR: Saved Labs ─── */}
-        <div style={{ width: 240, borderRight: `1px solid ${T.border}`, padding: 16, background: T.card, flexShrink: 0, overflowY: "auto" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>📚 Mallar</div>
+        <div style={{ width: 260, borderRight: `1px solid ${T.border}`, padding: 16, background: T.card, flexShrink: 0, overflowY: "auto", maxHeight: "calc(100vh - 60px)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>📚 Tomma mallar</div>
           {[["routing", "🛣️ Routing"], ["switching", "🔀 Switching"], ["security", "🔒 Security"], ["blank", "📄 Blank"]].map(([k, label]) => (
             <button key={k} onClick={() => handleTemplate(k)}
               style={{ ...S.btnSmall(T.textMuted), width: "100%", marginBottom: 6, textAlign: "left", padding: "8px 10px" }}>
               {label}
             </button>
           ))}
+
+          {/* Use existing lab as template */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", margin: "20px 0 8px" }}>
+            📋 Utgå från befintlig lab
+          </div>
+          <div style={{ fontSize: 10, color: T.textDim, marginBottom: 8 }}>Ladda en befintlig lab som bas, redigera fritt</div>
+          {CATEGORIES.map(cat => {
+            const catLabs = LABS_BY_CATEGORY[cat] || [];
+            if (catLabs.length === 0) return null;
+            return (
+              <div key={cat} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: T.accent, marginBottom: 4, opacity: 0.7 }}>{cat}</div>
+                <select
+                  value=""
+                  onChange={e => {
+                    const srcLab = catLabs.find(l => l.id === parseInt(e.target.value));
+                    if (!srcLab) return;
+                    const editorLab = simulatorToEditor(srcLab);
+                    editorLab.title = srcLab.title + " (kopia)";
+                    editorLab.source = "Based on Lab " + srcLab.id;
+                    setLab(editorLab);
+                    setLabId(Math.max(28, ...savedLabs.map(l => l.id), labId) + 1);
+                    notify(`Laddade "${srcLab.title}" som mall`);
+                  }}
+                  style={{ ...S.select, width: "100%", fontSize: 10, padding: "5px 6px" }}
+                >
+                  <option value="">Välj lab...</option>
+                  {catLabs.map(l => (
+                    <option key={l.id} value={l.id}>#{l.id} {l.title}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
 
           <div style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", margin: "20px 0 12px" }}>
             💾 Sparade ({savedLabs.length})

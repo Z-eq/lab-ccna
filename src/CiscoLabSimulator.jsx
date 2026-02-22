@@ -6,7 +6,7 @@ import { TOPO_IMAGES } from "./topoImages";
 // check: each inner array = one required command. All inner arrays must match for task to pass.
 // A command matches if ALL keywords in the inner array appear in any single command entered on the correct device.
 
-const LABS = [
+export const LABS = [
   {
     id: 1, title: "Static Routes & OSPF", category: "Routing",
     source: "Q214s",
@@ -2408,6 +2408,34 @@ export default function CiscoLabSimulator() {
   const [completedTasks, setCompletedTasks] = useState({});
   const [sidebarTab, setSidebarTab] = useState("tasks");
   const [sidebarWidth, setSidebarWidth] = useState(400);
+
+  // ─── CUSTOM LABS from Lab Editor (localStorage) ───
+  const [customLabs, setCustomLabs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ccna_editor_labs") || "[]"); } catch { return []; }
+  });
+  // Re-check localStorage periodically + on window focus (picks up editor changes)
+  useEffect(() => {
+    const reload = () => {
+      try {
+        const stored = JSON.parse(localStorage.getItem("ccna_editor_labs") || "[]");
+        setCustomLabs(stored);
+      } catch {}
+    };
+    window.addEventListener("focus", reload);
+    window.addEventListener("storage", reload);
+    return () => { window.removeEventListener("focus", reload); window.removeEventListener("storage", reload); };
+  }, []);
+
+  // Merge built-in + custom labs
+  const allLabs = [...LABS, ...customLabs.map(cl => ({ ...cl, _custom: true }))];
+
+  const deleteCustomLab = (id) => {
+    const updated = customLabs.filter(l => l.id !== id);
+    setCustomLabs(updated);
+    try { localStorage.setItem("ccna_editor_labs", JSON.stringify(updated)); } catch {}
+  };
+  const [sidebarTab, setSidebarTab] = useState("tasks");
+  const [sidebarWidth, setSidebarWidth] = useState(400);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(400);
@@ -2447,7 +2475,7 @@ export default function CiscoLabSimulator() {
   const inputRef = useRef(null);
 
   const T = darkMode ? THEMES.dark : THEMES.light;
-  const lab = selectedLab ? LABS.find(l => l.id === selectedLab) : null;
+  const lab = selectedLab ? allLabs.find(l => l.id === selectedLab) : null;
 
   useEffect(() => {
     if (lab) {
@@ -2674,13 +2702,18 @@ export default function CiscoLabSimulator() {
   };
 
   const getLabProgress = (labId) => {
-    const labObj = LABS.find(l => l.id === labId);
+    const labObj = allLabs.find(l => l.id === labId);
     if (!labObj) return 0;
     const done = labObj.tasks.filter(t => completedTasks[`${labId}-${t.id}`]).length;
     return Math.round((done / labObj.tasks.length) * 100);
   };
 
-  const filteredLabs = filterCategory === "All" ? LABS : LABS.filter(l => l.category === filterCategory);
+  const filteredLabs = filterCategory === "All" ? allLabs :
+    filterCategory === "Custom" ? allLabs.filter(l => l._custom) :
+    allLabs.filter(l => l.category === filterCategory && !l._custom);
+
+  const hasCustomLabs = customLabs.length > 0;
+  const allCategories = hasCustomLabs ? [...CATEGORIES, "Custom"] : CATEGORIES;
 
   // Theme Toggle Button
   const ThemeToggle = () => (
@@ -2710,11 +2743,11 @@ export default function CiscoLabSimulator() {
             <div style={{ width: 48, height: 48, background: `linear-gradient(135deg, ${T.accent}, ${T.accentAlt})`, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 900, color: darkMode ? "#0a0e17" : "#fff" }}>C</div>
             <div>
               <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: T.accent, letterSpacing: "-0.5px" }}>CCNA 200-301 Lab Simulator</h1>
-              <p style={{ margin: 0, fontSize: 12, color: T.textMuted, marginTop: 2 }}>{LABS.length} labs • Cisco IOS CLI • Auto-verify</p>
+              <p style={{ margin: 0, fontSize: 12, color: T.textMuted, marginTop: 2 }}>{allLabs.length} labs{hasCustomLabs ? ` (${customLabs.length} custom)` : ""} • Cisco IOS CLI • Auto-verify</p>
             </div>
             <div style={{ marginLeft: "auto", display: "flex", gap: 12, alignItems: "center" }}>
               <span style={{ fontSize: 11, color: T.textMuted }}>Completed:</span>
-              <span style={{ fontSize: 14, color: T.accent, fontWeight: 700 }}>{Object.values(completedTasks).filter(Boolean).length}/{LABS.reduce((a, l) => a + l.tasks.length, 0)}</span>
+              <span style={{ fontSize: 14, color: T.accent, fontWeight: 700 }}>{Object.values(completedTasks).filter(Boolean).length}/{allLabs.reduce((a, l) => a + l.tasks.length, 0)}</span>
               <ThemeToggle />
             </div>
           </div>
@@ -2722,45 +2755,116 @@ export default function CiscoLabSimulator() {
 
         <div style={{ maxWidth: 1400, margin: "0 auto", padding: "16px 32px" }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {["All", ...CATEGORIES].map(cat => (
+            {["All", ...allCategories].map(cat => (
               <button key={cat} onClick={() => setFilterCategory(cat)}
-                style={{ padding: "6px 16px", borderRadius: 20, border: filterCategory === cat ? `1px solid ${T.accent}` : `1px solid ${T.border}`, background: filterCategory === cat ? T.accentBg : "transparent", color: filterCategory === cat ? T.accent : T.textMuted, cursor: "pointer", fontSize: 12, fontFamily: "inherit", transition: "all 0.2s" }}>
-                {cat}
+                style={{ padding: "6px 16px", borderRadius: 20, border: filterCategory === cat ? `1px solid ${cat === "Custom" ? T.accentAlt : T.accent}` : `1px solid ${T.border}`, background: filterCategory === cat ? (cat === "Custom" ? T.accentAlt + "20" : T.accentBg) : "transparent", color: filterCategory === cat ? (cat === "Custom" ? T.accentAlt : T.accent) : T.textMuted, cursor: "pointer", fontSize: 12, fontFamily: "inherit", transition: "all 0.2s" }}>
+                {cat === "Custom" ? `⭐ Custom (${customLabs.length})` : cat}
               </button>
             ))}
           </div>
         </div>
 
-        <div style={{ maxWidth: 1400, margin: "0 auto", padding: "0 32px 48px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
-          {filteredLabs.map(l => {
-            const progress = getLabProgress(l.id);
-            return (
-              <div key={l.id} onClick={() => { setSelectedLab(l.id); setShowLabList(false); }}
-                style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, cursor: "pointer", transition: "all 0.25s", position: "relative", overflow: "hidden" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent + "55"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.transform = "translateY(0)"; }}>
-                <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: T.border }}>
-                  <div style={{ height: "100%", width: `${progress}%`, background: progress === 100 ? T.accent : T.accentAlt, transition: "width 0.3s" }} />
+        <div style={{ maxWidth: 1400, margin: "0 auto", padding: "0 32px 48px" }}>
+          {/* Built-in Labs */}
+          {filterCategory !== "Custom" && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+              {filteredLabs.filter(l => !l._custom).map(l => {
+                const progress = getLabProgress(l.id);
+                return (
+                  <div key={l.id} onClick={() => { setSelectedLab(l.id); setShowLabList(false); }}
+                    style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, cursor: "pointer", transition: "all 0.25s", position: "relative", overflow: "hidden" }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent + "55"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.transform = "translateY(0)"; }}>
+                    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: T.border }}>
+                      <div style={{ height: "100%", width: `${progress}%`, background: progress === 100 ? T.accent : T.accentAlt, transition: "width 0.3s" }} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, color: T.accentAlt, background: T.catBg, padding: "2px 8px", borderRadius: 6 }}>{l.category}</span>
+                      <span style={{ fontSize: 11, color: T.textMuted }}>Lab {l.id}</span>
+                    </div>
+                    <h3 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 600, color: T.text, lineHeight: 1.3 }}>{l.title}</h3>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                      {l.devices.map(d => (
+                        <span key={d.name} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: d.type === "router" ? T.routerBg : T.switchBg, color: d.type === "router" ? T.routerText : T.switchText, border: `1px solid ${d.type === "router" ? T.routerBorder : T.switchBorder}` }}>
+                          {d.type === "router" ? "⟁" : "⊞"} {d.name}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: T.textMuted }}>{l.tasks.length} tasks</span>
+                      <span style={{ fontSize: 11, color: progress === 100 ? T.accent : T.textMuted }}>{progress === 100 ? "✓ Complete" : `${progress}%`}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Custom Labs Section */}
+          {(filterCategory === "All" || filterCategory === "Custom") && customLabs.length > 0 && (
+            <>
+              {filterCategory === "All" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "32px 0 16px", padding: "0 4px" }}>
+                  <span style={{ fontSize: 18 }}>⭐</span>
+                  <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: T.accentAlt }}>Egna Labbar</h2>
+                  <span style={{ fontSize: 11, color: T.textMuted, background: T.catBg, padding: "2px 10px", borderRadius: 10 }}>{customLabs.length}</span>
+                  <div style={{ flex: 1, height: 1, background: T.border }} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                  <span style={{ fontSize: 11, color: T.accentAlt, background: T.catBg, padding: "2px 8px", borderRadius: 6 }}>{l.category}</span>
-                  <span style={{ fontSize: 11, color: T.textMuted }}>Lab {l.id}</span>
-                </div>
-                <h3 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 600, color: T.text, lineHeight: 1.3 }}>{l.title}</h3>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                  {l.devices.map(d => (
-                    <span key={d.name} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: d.type === "router" ? T.routerBg : T.switchBg, color: d.type === "router" ? T.routerText : T.switchText, border: `1px solid ${d.type === "router" ? T.routerBorder : T.switchBorder}` }}>
-                      {d.type === "router" ? "⟁" : "⊞"} {d.name}
-                    </span>
-                  ))}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 11, color: T.textMuted }}>{l.tasks.length} tasks</span>
-                  <span style={{ fontSize: 11, color: progress === 100 ? T.accent : T.textMuted }}>{progress === 100 ? "✓ Complete" : `${progress}%`}</span>
-                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+                {filteredLabs.filter(l => l._custom).map(l => {
+                  const progress = getLabProgress(l.id);
+                  return (
+                    <div key={`custom-${l.id}`}
+                      style={{ background: T.card, border: `1px solid ${T.accentAlt}40`, borderRadius: 12, padding: 20, cursor: "pointer", transition: "all 0.25s", position: "relative", overflow: "hidden" }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = T.accentAlt + "80"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = T.accentAlt + "40"; e.currentTarget.style.transform = "translateY(0)"; }}>
+                      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${T.accentAlt}, ${T.accent})` }}>
+                        <div style={{ height: "100%", width: `${progress}%`, background: progress === 100 ? T.accent : T.accentAlt, transition: "width 0.3s" }} />
+                      </div>
+                      <div onClick={() => { setSelectedLab(l.id); setShowLabList(false); }} style={{ cursor: "pointer" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <span style={{ fontSize: 11, color: T.accentAlt, background: T.catBg, padding: "2px 8px", borderRadius: 6 }}>{l.category}</span>
+                            <span style={{ fontSize: 9, color: T.accentAlt, background: T.accentAlt + "15", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>⭐ CUSTOM</span>
+                          </div>
+                          <span style={{ fontSize: 11, color: T.textMuted }}>#{l.id}</span>
+                        </div>
+                        <h3 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 600, color: T.text, lineHeight: 1.3 }}>{l.title || "Untitled Lab"}</h3>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                          {l.devices.map(d => (
+                            <span key={d.name} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: d.type === "router" ? T.routerBg : T.switchBg, color: d.type === "router" ? T.routerText : T.switchText, border: `1px solid ${d.type === "router" ? T.routerBorder : T.switchBorder}` }}>
+                              {d.type === "router" ? "⟁" : "⊞"} {d.name}
+                            </span>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 11, color: T.textMuted }}>{l.tasks.length} tasks</span>
+                          <span style={{ fontSize: 11, color: progress === 100 ? T.accent : T.textMuted }}>{progress === 100 ? "✓ Complete" : `${progress}%`}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.border}` }}>
+                        <button onClick={(e) => { e.stopPropagation(); deleteCustomLab(l.id); }}
+                          style={{ padding: "4px 10px", borderRadius: 4, border: `1px solid ${T.warn}40`, background: "transparent", color: T.warn, cursor: "pointer", fontSize: 10, fontFamily: "inherit", fontWeight: 600 }}>
+                          🗑️ Delete
+                        </button>
+                        {l.source && <span style={{ fontSize: 10, color: T.textDim, marginLeft: "auto", alignSelf: "center" }}>Source: {l.source}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </>
+          )}
+
+          {/* Empty state for custom labs */}
+          {filterCategory === "Custom" && customLabs.length === 0 && (
+            <div style={{ textAlign: "center", padding: "60px 20px" }}>
+              <span style={{ fontSize: 48, display: "block", marginBottom: 16 }}>🔧</span>
+              <h3 style={{ color: T.textMuted, fontSize: 16, fontWeight: 600, margin: "0 0 8px" }}>Inga egna labbar ännu</h3>
+              <p style={{ color: T.textDim, fontSize: 12, margin: 0 }}>Skapa labbar i Lab Editor-fliken — de dyker upp här automatiskt!</p>
+            </div>
+          )}
         </div>
       </div>
     );
