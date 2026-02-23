@@ -620,4 +620,3 @@ export function processCommand(input, state) {
 
   return { output: "", state };
 }
-
