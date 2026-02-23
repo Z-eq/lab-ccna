@@ -15,7 +15,30 @@ export function processCommand(input, state) {
   const cmd = rawCmd;
   const lc = cmd.toLowerCase();
   const parts = lc.split(/\s+/);
-  const first = parts[0];
+  let first = parts[0];
+
+  // ─── IOS abbreviation expansion for exec commands ───
+  const execCmds = {
+    user: ["enable", "exit", "logout", "ping", "quit", "show", "traceroute"],
+    privileged: ["clear", "clock", "configure", "copy", "crypto", "debug", "disable",
+      "erase", "exit", "logout", "ping", "quit", "reload", "show", "ssh",
+      "terminal", "traceroute", "undebug", "write"],
+  };
+  if (state.mode === "user" || state.mode === "privileged") {
+    const cmds = execCmds[state.mode] || [];
+    const exact = cmds.find(c => c === first);
+    if (exact) {
+      // exact match, no expansion needed
+    } else {
+      const matches = cmds.filter(c => c.startsWith(first));
+      if (matches.length === 1) {
+        first = matches[0];
+        parts[0] = first;
+      } else if (matches.length > 1 && first.length > 0 && first !== "?") {
+        return { output: `% Ambiguous command:  "${rawCmd}"`, state };
+      }
+    }
+  }
 
   // Universal: ?
   if (rawCmd === "?") return { output: getHelp(state), state };

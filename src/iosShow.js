@@ -33,8 +33,98 @@ export function getPortInfo(iface, cmds) {
   return info;
 }
 
+// ─── IOS ABBREVIATION EXPANSION ──────────────────────────────────────────────
+// Expands abbreviated show commands to their canonical forms
+// e.g. "r" → "running-config", "ip int br" → "ip interface brief"
+function expandShowAbbr(input) {
+  const words = input.trim().split(/\s+/);
+  if (words.length === 0 || words[0] === "") return input;
+
+  // Top-level show subcommands
+  const topCmds = [
+    "access-lists", "arp", "cdp", "clock", "dhcp", "etherchannel",
+    "flash", "history", "interfaces", "inventory", "ip", "ipv6",
+    "lldp", "logging", "mac", "ntp", "port-security", "running-config",
+    "spanning-tree", "startup-config", "users", "version", "vlan",
+  ];
+
+  // IP sub-subcommands
+  const ipCmds = [
+    "access-lists", "arp", "dhcp", "interface", "nat", "ospf",
+    "protocols", "route", "ssh",
+  ];
+
+  // Match first word — prefer exact match
+  const w0 = words[0].toLowerCase();
+  const exact0 = topCmds.find(c => c === w0);
+  if (exact0) {
+    words[0] = exact0;
+  } else {
+    const match0 = topCmds.filter(c => c.startsWith(w0));
+    if (match0.length === 1) {
+      words[0] = match0[0];
+    } else if (match0.length > 1) {
+      return null;
+    }
+  }
+
+  // If first word is "ip" or "ipv6" and there are more words, expand sub-sub
+  if ((words[0] === "ip" || words[0] === "ipv6") && words.length > 1) {
+    const w1 = words[1].toLowerCase();
+    const cmds = words[0] === "ip" ? ipCmds : ["interface", "ospf", "route"];
+    const exact1 = cmds.find(c => c === w1);
+    if (exact1) {
+      words[1] = exact1;
+    } else {
+      const match1 = cmds.filter(c => c.startsWith(w1));
+      if (match1.length === 1) words[1] = match1[0];
+    }
+
+    // Third-level: "ip interface brief", "ip ospf neighbor/interface"
+    if (words.length > 2) {
+      const w2 = words[2].toLowerCase();
+      if (words[1] === "interface") {
+        const opts = ["brief", "summary"];
+        const m = opts.filter(c => c.startsWith(w2));
+        if (m.length === 1) words[2] = m[0];
+      } else if (words[1] === "ospf") {
+        const opts = ["neighbor", "interface", "database"];
+        const m = opts.filter(c => c.startsWith(w2));
+        if (m.length === 1) words[2] = m[0];
+      } else if (words[1] === "dhcp") {
+        const opts = ["snooping", "pool", "binding"];
+        const m = opts.filter(c => c.startsWith(w2));
+        if (m.length === 1) words[2] = m[0];
+      } else if (words[1] === "arp") {
+        const opts = ["inspection"];
+        const m = opts.filter(c => c.startsWith(w2));
+        if (m.length === 1) words[2] = m[0];
+      }
+    }
+  }
+
+  // "interfaces" sub: trunk/switchport/status + specific interface name
+  if (words[0] === "interfaces" && words.length > 1) {
+    const w1 = words[1].toLowerCase();
+    const opts = ["trunk", "switchport", "status"];
+    const m = opts.filter(c => c.startsWith(w1));
+    if (m.length === 1) words[1] = m[0];
+  }
+
+  return words.join(" ");
+}
+
 export function processShow(parts, state) {
-  const sub = parts.slice(1).join(" ");
+  const rawSub = parts.slice(1).join(" ");
+
+  // ─── IOS-style abbreviation expansion ───
+  // In real IOS, "sh r" → "show running-config", "sh ip int br" → "show ip interface brief"
+  const expanded = expandShowAbbr(rawSub);
+  // Ambiguous check
+  if (expanded === null) {
+    return { output: `% Ambiguous command:  "show ${rawSub}"`, state };
+  }
+  const sub = expanded;
 
   // show running-config (hierarchical)
   if (sub.startsWith("run")) {

@@ -133,6 +133,7 @@ export default function CiscoLabSimulator() {
       setShowDesc(true);
       setCheckResults(null);
       undoStack.current = {};
+      deviceHistories.current = {};
     }
   }, [selectedLab]);
 
@@ -145,6 +146,12 @@ export default function CiscoLabSimulator() {
 
   useEffect(() => { if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight; }, [terminalHistory]);
   useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, [selectedDevice, terminalHistory]);
+  // Auto-save terminal history to per-device store
+  useEffect(() => {
+    if (selectedDevice && terminalHistory.length > 0) {
+      deviceHistories.current[selectedDevice] = terminalHistory;
+    }
+  }, [terminalHistory, selectedDevice]);
 
   const currentState = selectedDevice ? deviceStates[selectedDevice] : null;
 
@@ -156,12 +163,28 @@ export default function CiscoLabSimulator() {
     return () => clearTimeout(timer);
   }, [toasts]);
 
+  // ─── Per-device terminal history ───
+  const deviceHistories = useRef({});
+  const saveDeviceHistory = useCallback((device, history) => {
+    if (device) deviceHistories.current[device] = history;
+  }, []);
+
   const switchDevice = useCallback((deviceName) => {
+    // Save current device history
+    if (selectedDevice) {
+      deviceHistories.current[selectedDevice] = terminalHistory;
+    }
     setSelectedDevice(deviceName);
-    setTerminalHistory(prev => [...prev, { type: "system", text: `\n--- Switched to ${deviceName} console ---\n` }]);
+    // Restore target device history or start fresh
+    const saved = deviceHistories.current[deviceName];
+    if (saved && saved.length > 0) {
+      setTerminalHistory(saved);
+    } else {
+      setTerminalHistory([{ type: "system", text: `\n--- ${deviceName} console ---\n` }]);
+    }
     setCurrentInput("");
     setCmdHistoryIdx(-1);
-  }, []);
+  }, [selectedDevice, terminalHistory]);
 
   const handleCheckWork = useCallback(() => {
     if (!lab) return;
@@ -188,8 +211,15 @@ export default function CiscoLabSimulator() {
 
   const handleCommand = useCallback((cmdOverride) => {
     const cmd = cmdOverride || currentInput;
-    if (!currentState || !cmd.trim()) return;
+    if (!currentState) return;
     const prompt = getPrompt(currentState);
+
+    // Empty enter: just show prompt line (like real IOS scrolling)
+    if (!cmd.trim()) {
+      setTerminalHistory(prev => [...prev, { type: "input", text: `${prompt} ` }]);
+      setCurrentInput("");
+      return;
+    }
 
     // Feature: Multiline paste — split and process each line
     const lines = cmd.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -603,6 +633,7 @@ export default function CiscoLabSimulator() {
               lab.devices.forEach(d => { states[d.name] = createDeviceState(d); });
               setDeviceStates(states);
               setTerminalHistory([{ type: "system", text: `\n  ⟳ Lab reset. All config cleared.\n  Type 'enable' then 'configure terminal' to begin.\n` }]);
+              deviceHistories.current = {};
               setCheckResults(null);
               undoStack.current = {};
               try { sessionStorage.removeItem(`ccna_lab_state_${lab.id}`); } catch {}
@@ -818,8 +849,12 @@ export default function CiscoLabSimulator() {
           </div>
         </div>
 
-        <div ref={terminalRef} onClick={() => inputRef.current?.focus()}
-          style={{ flex: 1, overflow: "auto", padding: "12px 16px", background: "#0a0e17", cursor: "text" }}>
+        <div ref={terminalRef} onClick={(e) => {
+            // Only focus input if clicking on empty area (not selecting text)
+            const sel = window.getSelection();
+            if (!sel || sel.toString().length === 0) inputRef.current?.focus();
+          }}
+          style={{ flex: 1, overflow: "auto", padding: "12px 16px", background: "#0a0e17", cursor: "text", userSelect: "text" }}>
           {terminalHistory.map((entry, i) => (
             <div key={i} style={{
               color: entry.type === "system" ? "#0891b2" : entry.type === "input" ? "#e0e6ed" : entry.type === "success" ? "#4ade80" : "#8b9bb4",
