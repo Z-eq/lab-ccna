@@ -527,3 +527,65 @@ export function processShow(parts, state) {
   return { output: `% Invalid input detected at '^' marker.\n\n  show ${sub}\n       ^`, state };
 }
 
+// ─── HELPERS FOR BUILDING THE CONFIG STRING ──────────────────────────────────
+
+function buildRunningConfig(state) {
+  let lines = [
+    "!",
+    `hostname ${state.hostname}`,
+    "!"
+  ];
+
+  // 1. Globala kommandon (ip domain-name, ipv6 unicast-routing, etc.)
+  if (state.globalCmds && state.globalCmds.length > 0) {
+    state.globalCmds.forEach(cmd => lines.push(cmd));
+    lines.push("!");
+  }
+
+  // 2. VLAN-konfiguration
+  Object.entries(state.vlanCfg || {}).forEach(([id, name]) => {
+    lines.push(`vlan ${id}`);
+    if (name) lines.push(` name ${name}`);
+    lines.push("!");
+  });
+
+  // 3. Interface-konfiguration (Viktigast för Lab 235 & 211)
+  Object.entries(state.interfaceCfg || {}).forEach(([iface, cmds]) => {
+    lines.push(`interface ${iface}`);
+    cmds.forEach(c => lines.push(` ${c}`));
+    lines.push("!");
+  });
+
+  // 4. Router-konfiguration (OSPF etc. för Lab 227)
+  Object.entries(state.routerCfg || {}).forEach(([proto, cmds]) => {
+    lines.push(`router ${proto}`);
+    cmds.forEach(c => lines.push(` ${c}`));
+    lines.push("!");
+  });
+
+  // 5. DHCP-pooler
+  Object.entries(state.dhcpCfg || {}).forEach(([name, cmds]) => {
+    lines.push(`ip dhcp pool ${name}`);
+    cmds.forEach(c => lines.push(` ${c}`));
+    lines.push("!");
+  });
+
+  // 6. ACL-konfiguration
+  Object.entries(state.aclCfg || {}).forEach(([name, cmds]) => {
+    // Försök hitta om det är standard eller extended från globalCmds
+    const isExt = state.globalCmds.some(c => c.includes(`access-list extended ${name}`));
+    lines.push(`ip access-list ${isExt ? "extended" : "standard"} ${name}`);
+    cmds.forEach(c => lines.push(` ${c}`));
+    lines.push("!");
+  });
+
+  // 7. Line-konfiguration (console, vty)
+  Object.entries(state.lineCfg || {}).forEach(([line, cmds]) => {
+    lines.push(`line ${line}`);
+    cmds.forEach(c => lines.push(` ${c}`));
+    lines.push("!");
+  });
+
+  lines.push("end");
+  return lines.join("\n");
+}
