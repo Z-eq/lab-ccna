@@ -1,6 +1,7 @@
 // iosShow.js — All show command implementations
 
 import { normalizeInterface } from "./iosHelpers";
+import { buildRunningConfig } from "./iosConfig";
 
 // ─── INTERFACE STATE HELPERS ─────────────────────────────────────────────────
 export function getPortInfo(iface, cmds) {
@@ -226,13 +227,94 @@ export function processShow(parts, state) {
     return { output: lines.join("\n"), state };
   }
 
-  // show ip ospf
-  if (sub.startsWith("ip ospf")) {
-    const rid = state.ospfConfig.routerId || "0.0.0.0";
-    const nets = state.ospfConfig.networks || [];
-    // Find process ID from routerCfg
-    const ospfProc = Object.keys(state.routerCfg).find(k => k.startsWith("ospf")) || "ospf 1";
+  // show ip ospf neighbor
+  if (sub.startsWith("ip ospf") && sub.includes("neigh")) {
+    const ospfProc = Object.keys(state.routerCfg).find(k => k.startsWith("ospf"));
+    if (!ospfProc) return { output: "% OSPF is not configured", state };
+    const procCfg = state.routerCfg[ospfProc] || [];
+    const rid = procCfg.find(c => c.startsWith("router-id"));
+    const lines = [
+      "",
+      "Neighbor ID     Pri   State           Dead Time   Address         Interface",
+    ];
+    // Simulated neighbors from configured OSPF interfaces
+    const ospfIfs = [];
+    // Collect ip ospf commands from interface config
+    Object.entries(state.interfaceCfg).forEach(([iface, cmds]) => {
+      if (cmds.some(c => c.startsWith("ip ospf"))) {
+        const ifInfo = state.interfaces[iface];
+        if (ifInfo?.ip && ifInfo.ip !== "dhcp") {
+          ospfIfs.push({ iface, ip: ifInfo.ip.split("/")[0] });
+        }
+      }
+    });
+    // Also check network statements
+    const networks = procCfg.filter(c => c.startsWith("network"));
+    if (ospfIfs.length === 0 && networks.length > 0) {
+      Object.entries(state.interfaces).forEach(([iface, ifInfo]) => {
+        if (ifInfo?.ip && ifInfo.ip !== "dhcp" && ifInfo.status === "up") {
+          ospfIfs.push({ iface, ip: ifInfo.ip.split("/")[0] });
+        }
+      });
+    }
+    ospfIfs.forEach((oi, idx) => {
+      const octets = oi.ip.split(".");
+      const neighborId = `${octets[0]}.${octets[1]}.${octets[2]}.${parseInt(octets[3]) === 1 ? "2" : "1"}`;
+      const pri = "1";
+      const drState = idx === 0 ? "FULL/DR" : "FULL/BDR";
+      lines.push(`${neighborId.padEnd(16)}${pri.padEnd(6)}${drState.padEnd(16)}00:00:35    ${neighborId.padEnd(16)}${oi.iface}`);
+    });
+    if (ospfIfs.length === 0) lines.push("% No OSPF neighbors");
+    return { output: lines.join("\n"), state };
+  }
+
+  // show ip ospf interface [<name>]
+  if (sub.startsWith("ip ospf") && sub.includes("int")) {
+    const ospfProc = Object.keys(state.routerCfg).find(k => k.startsWith("ospf"));
+    if (!ospfProc) return { output: "% OSPF is not configured", state };
+    const procCfg = state.routerCfg[ospfProc] || [];
+    const rid = procCfg.find(c => c.startsWith("router-id"))?.replace("router-id ", "") || "0.0.0.0";
     const pid = ospfProc.replace("ospf ", "");
+    // Check for specific interface filter
+    const ifFilter = sub.match(/interface\s+(\S+\s*\S*)/i);
+    const targetIf = ifFilter ? normalizeInterface(ifFilter[1].trim()) : null;
+    const lines = [];
+    Object.entries(state.interfaceCfg).forEach(([iface, cmds]) => {
+      if (targetIf && iface !== targetIf) return;
+      const hasOspf = cmds.some(c => c.startsWith("ip ospf"));
+      if (!hasOspf) return;
+      const ifInfo = state.interfaces[iface];
+      if (!ifInfo?.ip || ifInfo.ip === "dhcp") return;
+      const ip = ifInfo.ip.split("/")[0];
+      const cidr = ifInfo.ip.split("/")[1] || "24";
+      const priorityCmd = cmds.find(c => c.startsWith("ip ospf priority"));
+      const priority = priorityCmd ? priorityCmd.split(" ").pop() : "1";
+      const costCmd = cmds.find(c => c.startsWith("ip ospf cost"));
+      const cost = costCmd ? costCmd.split(" ").pop() : "10";
+      const networkType = cmds.includes("ip ospf network point-to-point") ? "POINT_TO_POINT" : "BROADCAST";
+      const passive = cmds.includes("passive-interface") ? " passive" : "";
+      lines.push(`${iface} is up, line protocol is up${passive}`);
+      lines.push(`  Internet Address ${ip}/${cidr}, Area 0, Attached via Interface`);
+      lines.push(`  Process ID ${pid}, Router ID ${rid}, Network Type ${networkType}, Cost: ${cost}`);
+      lines.push(`  Transmit Delay is 1 sec, State DR, Priority ${priority}`);
+      lines.push(`  Designated Router (ID) ${rid}, Interface address ${ip}`);
+      lines.push(`  Timer intervals configured, Hello 10, Dead 40, Wait 40, Retransmit 5`);
+      lines.push(`    Hello due in 00:00:05`);
+      lines.push(`  Neighbor Count is 1, Adjacent neighbor count is 1`);
+      lines.push("");
+    });
+    if (lines.length === 0) lines.push("% No OSPF interfaces configured");
+    return { output: lines.join("\n"), state };
+  }
+
+  // show ip ospf (general)
+  if (sub.startsWith("ip ospf")) {
+    const ospfProc = Object.keys(state.routerCfg).find(k => k.startsWith("ospf"));
+    if (!ospfProc) return { output: "% OSPF is not configured", state };
+    const procCfg = state.routerCfg[ospfProc] || [];
+    const rid = procCfg.find(c => c.startsWith("router-id"))?.replace("router-id ", "") || "0.0.0.0";
+    const pid = ospfProc.replace("ospf ", "");
+    const nets = procCfg.filter(c => c.startsWith("network"));
     const lines = [
       `Routing Process "ospf ${pid}" with ID ${rid}`,
       ` Start time: 00:00:01.000, Time elapsed: 00:10:00.000`,
@@ -244,6 +326,17 @@ export function processShow(parts, state) {
       ` Number of interfaces in this area: ${nets.length}`,
     ];
     return { output: lines.join("\n"), state };
+  }
+
+  // show ip ssh
+  if (sub === "ip ssh" || sub.startsWith("ip ssh")) {
+    if (!state.sshConfigured) {
+      return { output: "SSH Disabled - version 1.99\n%Please create RSA keys (of at least 768 bits size) to enable SSH v2.", state };
+    }
+    return {
+      output: `SSH Enabled - version 2.0\nAuthentication methods:publickey,keyboard-interactive,password\nAuthentication timeout: 120 secs; Authentication retries: 3\nMinimum expected Diffie Hellman key size : 1024 bits\nIOS Keys in SECSH format(ssh-rsa, base64 encoded): ${state.hostname}.lab.local`,
+      state
+    };
   }
 
   // show ip nat translations
@@ -346,6 +439,34 @@ export function processShow(parts, state) {
 
   // show port-security
   if (sub.includes("port-security")) {
+    // show port-security interface <name>
+    const ifMatch = sub.match(/port-security\s+interface\s+(\S+\s*\S*)/i);
+    if (ifMatch) {
+      const iface = normalizeInterface(ifMatch[1].trim());
+      const cfg = state.portSecurity[iface];
+      if (!cfg || !cfg.enabled) return { output: `% Port security not enabled on interface ${iface}`, state };
+      const max = cfg.max || "1";
+      const violation = cfg.violation || "shutdown";
+      const sticky = cfg.sticky ? "Enabled" : "Disabled";
+      const hash = iface.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+      const mac = `0050.${(hash & 0xffff).toString(16).padStart(4,"0")}.${((hash*7) & 0xffff).toString(16).padStart(4,"0")}`;
+      const lines = [
+        `Port Security              : Enabled`,
+        `Port Status                : Secure-up`,
+        `Violation Mode             : ${violation.charAt(0).toUpperCase() + violation.slice(1)}`,
+        `Aging Time                 : 0 mins`,
+        `Aging Type                 : Absolute`,
+        `SecureStatic Address Aging : Disabled`,
+        `Maximum MAC Addresses      : ${max}`,
+        `Total MAC Addresses        : 1`,
+        `Configured MAC Addresses   : 0`,
+        `Sticky MAC Addresses       : ${sticky === "Enabled" ? "1" : "0"}`,
+        `Last Source Address:Vlan   : ${mac}:1`,
+        `Security Violation Count   : 0`,
+      ];
+      return { output: lines.join("\n"), state };
+    }
+    // show port-security (summary)
     const lines = [
       "Secure Port  MaxSecureAddr  CurrentAddr  SecurityViolation  Security Action",
       "----------   -------------  -----------  -----------------  ---------------",
@@ -358,6 +479,80 @@ export function processShow(parts, state) {
       }
     });
     if (lines.length === 2) lines.push("% Port security not configured on any interface");
+    return { output: lines.join("\n"), state };
+  }
+
+  // show arp
+  if (sub === "arp" || sub.startsWith("arp")) {
+    const lines = [
+      "Protocol  Address          Age (min)  Hardware Addr   Type   Interface",
+    ];
+    Object.entries(state.interfaces).forEach(([ifName, ifInfo]) => {
+      if (ifInfo.ip && ifInfo.ip !== "dhcp" && ifInfo.status === "up") {
+        const ip = ifInfo.ip.split("/")[0];
+        lines.push(`Internet  ${ip.padEnd(17)}0          aabb.cc00.0100  ARPA   ${ifName}`);
+      }
+    });
+    // Simulated neighbor entries
+    Object.entries(state.interfaces).forEach(([ifName, ifInfo]) => {
+      if (ifInfo.ip && ifInfo.ip !== "dhcp" && ifInfo.status === "up") {
+        const ip = ifInfo.ip.split("/")[0];
+        const octets = ip.split(".");
+        const neighborIp = `${octets[0]}.${octets[1]}.${octets[2]}.${parseInt(octets[3]) === 1 ? "2" : "1"}`;
+        const hash = ifName.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+        const mac = `0050.${(hash & 0xffff).toString(16).padStart(4,"0")}.${((hash*7) & 0xffff).toString(16).padStart(4,"0")}`;
+        lines.push(`Internet  ${neighborIp.padEnd(17)}2          ${mac}  ARPA   ${ifName}`);
+      }
+    });
+    if (lines.length === 1) lines.push("% No ARP entries");
+    return { output: lines.join("\n"), state };
+  }
+
+  // show ip protocols
+  if (sub.startsWith("ip proto") || sub.startsWith("ip prot")) {
+    if (Object.keys(state.routerCfg).length === 0 && state.staticRoutes.length === 0) {
+      return { output: "% No routing protocols active", state };
+    }
+    const lines = [];
+    const ospfProc = Object.keys(state.routerCfg);
+    if (ospfProc.length > 0) {
+      ospfProc.forEach(proc => {
+        const procCfg = state.routerCfg[proc] || [];
+        const routerId = procCfg.find(c => c.startsWith("router-id"));
+        const networks = procCfg.filter(c => c.startsWith("network"));
+        const passive = procCfg.filter(c => c.startsWith("passive-interface"));
+        lines.push(`Routing Protocol is "ospf ${proc.replace("ospf ", "")}"`);
+        lines.push(`  Outgoing update filter list for all interfaces is not set`);
+        lines.push(`  Incoming update filter list for all interfaces is not set`);
+        if (routerId) lines.push(`  Router ID ${routerId.replace("router-id ", "")}`);
+        lines.push(`  Number of areas in this router is 1. 1 normal 0 stub 0 nssa`);
+        lines.push(`  Maximum path: 4`);
+        lines.push(`  Routing for Networks:`);
+        if (networks.length === 0) lines.push(`    (none)`);
+        networks.forEach(n => lines.push(`    ${n}`));
+        if (passive.length > 0) {
+          lines.push(`  Passive Interface(s):`);
+          passive.forEach(p => lines.push(`    ${p.replace("passive-interface ", "")}`));
+        }
+        lines.push(`  Routing Information Sources:`);
+        lines.push(`    Gateway         Distance      Last Update`);
+        lines.push("");
+      });
+    }
+    if (state.staticRoutes.length > 0) {
+      lines.push(`Routing Protocol is "static"`);
+      lines.push(`  ${state.staticRoutes.length} static route(s)`);
+    }
+    return { output: lines.join("\n"), state };
+  }
+
+  // show history
+  if (sub === "history" || sub.startsWith("hist")) {
+    if (!state.commandHistory || state.commandHistory.length === 0) {
+      return { output: "% No commands in history", state };
+    }
+    const recent = state.commandHistory.slice(-20);
+    const lines = recent.map((cmd, i) => `  ${(i + 1).toString().padStart(3)}  ${cmd}`);
     return { output: lines.join("\n"), state };
   }
 
@@ -498,26 +693,67 @@ export function processShow(parts, state) {
 
   // show clock
   if (sub.startsWith("clock") || sub.startsWith("cl")) {
-    return { output: `*12:00:00.000 UTC Sun Feb 22 2026`, state };
+    return { output: `*12:00:00.000 UTC Sun Feb 23 2026`, state };
+  }
+
+  // show flash
+  if (sub.startsWith("flash")) {
+    const model = state.type === "switch" ? "c2960-lanbasek9-mz.150-2.SE11.bin" : "c2900-universalk9-mz.SPA.159-3.M7.bin";
+    return {
+      output: `-#- --length-- -----date/time------ path\n  1    73476688 Feb 23 2026 00:00:00 +00:00 ${model}\n\n255744000 bytes total (182267312 bytes free)`,
+      state
+    };
+  }
+
+  // show logging
+  if (sub.startsWith("log")) {
+    return {
+      output: `Syslog logging: enabled (0 messages dropped, 0 messages rate-limited,\n                0 flushes, 0 overruns, xml disabled, filtering disabled)\n\nNo Active Message Discriminator.\n\nConsole logging: level debugging, 0 messages logged, xml disabled,\n                 filtering disabled\nMonitor logging: level debugging, 0 messages logged, xml disabled,\n                 filtering disabled\nBuffer logging:  level debugging, 0 messages logged, xml disabled,\n                 filtering disabled\n\nLog Buffer (8192 bytes):\n`,
+      state
+    };
+  }
+
+  // show users
+  if (sub === "users" || sub.startsWith("users")) {
+    return {
+      output: `    Line       User       Host(s)              Idle       Location\n*  0 con 0                idle                 00:00:00\n\n  Interface    User               Mode         Idle     Peer Address`,
+      state
+    };
+  }
+
+  // show inventory
+  if (sub.startsWith("inv")) {
+    const model = state.type === "switch" ? "WS-C2960-24TT-L" : "CISCO2901/K9";
+    const sn = "FTX1524" + state.hostname.split("").reduce((a, c) => a + c.charCodeAt(0), 0).toString(16).toUpperCase().slice(0, 4);
+    return {
+      output: `NAME: "1", DESCR: "Cisco ${model}"\nPID: ${model}       , VID: V04  , SN: ${sn}`,
+      state
+    };
   }
 
   // ─── show ? (help for show subcommands) ───
   if (sub === "" || sub === "?") {
     const showHelp = [
       ["access-lists", "List access lists"],
-      ["arp", "ARP table / DAI"],
+      ["arp", "ARP table"],
       ["cdp", "CDP information"],
       ["clock", "Display the system clock"],
+      ["dhcp", "DHCP snooping information"],
       ["etherchannel", "EtherChannel information"],
+      ["flash:", "Display information about flash: file system"],
+      ["history", "Display the session command history"],
       ["interfaces", "Interface status and configuration"],
+      ["inventory", "Show the physical inventory"],
       ["ip", "IP information"],
       ["lldp", "LLDP information"],
+      ["logging", "Show the logging buffers"],
       ["mac", "MAC forwarding table"],
       ["ntp", "NTP information"],
-      ["port-security", "Show port security"],
+      ["port-security", "Show port security status"],
       ["running-config", "Current operating configuration"],
       ["spanning-tree", "Spanning tree topology"],
       ["startup-config", "Saved configuration"],
+      ["users", "Display information about terminal lines"],
       ["version", "System hardware and software status"],
       ["vlan", "VTP VLAN status"],
     ];
@@ -527,65 +763,3 @@ export function processShow(parts, state) {
   return { output: `% Invalid input detected at '^' marker.\n\n  show ${sub}\n       ^`, state };
 }
 
-// ─── HELPERS FOR BUILDING THE CONFIG STRING ──────────────────────────────────
-
-function buildRunningConfig(state) {
-  let lines = [
-    "!",
-    `hostname ${state.hostname}`,
-    "!"
-  ];
-
-  // 1. Globala kommandon (ip domain-name, ipv6 unicast-routing, etc.)
-  if (state.globalCmds && state.globalCmds.length > 0) {
-    state.globalCmds.forEach(cmd => lines.push(cmd));
-    lines.push("!");
-  }
-
-  // 2. VLAN-konfiguration
-  Object.entries(state.vlanCfg || {}).forEach(([id, name]) => {
-    lines.push(`vlan ${id}`);
-    if (name) lines.push(` name ${name}`);
-    lines.push("!");
-  });
-
-  // 3. Interface-konfiguration (Viktigast för Lab 235 & 211)
-  Object.entries(state.interfaceCfg || {}).forEach(([iface, cmds]) => {
-    lines.push(`interface ${iface}`);
-    cmds.forEach(c => lines.push(` ${c}`));
-    lines.push("!");
-  });
-
-  // 4. Router-konfiguration (OSPF etc. för Lab 227)
-  Object.entries(state.routerCfg || {}).forEach(([proto, cmds]) => {
-    lines.push(`router ${proto}`);
-    cmds.forEach(c => lines.push(` ${c}`));
-    lines.push("!");
-  });
-
-  // 5. DHCP-pooler
-  Object.entries(state.dhcpCfg || {}).forEach(([name, cmds]) => {
-    lines.push(`ip dhcp pool ${name}`);
-    cmds.forEach(c => lines.push(` ${c}`));
-    lines.push("!");
-  });
-
-  // 6. ACL-konfiguration
-  Object.entries(state.aclCfg || {}).forEach(([name, cmds]) => {
-    // Försök hitta om det är standard eller extended från globalCmds
-    const isExt = state.globalCmds.some(c => c.includes(`access-list extended ${name}`));
-    lines.push(`ip access-list ${isExt ? "extended" : "standard"} ${name}`);
-    cmds.forEach(c => lines.push(` ${c}`));
-    lines.push("!");
-  });
-
-  // 7. Line-konfiguration (console, vty)
-  Object.entries(state.lineCfg || {}).forEach(([line, cmds]) => {
-    lines.push(`line ${line}`);
-    cmds.forEach(c => lines.push(` ${c}`));
-    lines.push("!");
-  });
-
-  lines.push("end");
-  return lines.join("\n");
-}

@@ -215,6 +215,7 @@ export default function CiscoLabSimulator() {
     // Single command
     pushUndo(selectedDevice, currentState);
     const { output, state: newState } = processCommand(cmd, JSON.parse(JSON.stringify(currentState)));
+    newState.commandHistory = [...(currentState.commandHistory || []), cmd];
     setTerminalHistory(prev => [
       ...prev,
       { type: "input", text: `${prompt} ${cmd}` },
@@ -268,10 +269,20 @@ export default function CiscoLabSimulator() {
         { p: "sh cd", c: "show cdp", modes: ["privileged"] },
         { p: "sh lldp n", c: "show lldp neighbors", modes: ["privileged"] },
         { p: "sh ll", c: "show lldp", modes: ["privileged"] },
+        { p: "sh ip os n", c: "show ip ospf neighbor", modes: ["privileged"] },
+        { p: "sh ip os int", c: "show ip ospf interface", modes: ["privileged"] },
         { p: "sh ip ac", c: "show ip access-lists", modes: ["privileged"] },
         { p: "sh ip na", c: "show ip nat translations", modes: ["privileged"] },
+        { p: "sh ip ss", c: "show ip ssh", modes: ["privileged"] },
+        { p: "sh ip pr", c: "show ip protocols", modes: ["privileged"] },
         { p: "sh ver", c: "show version", modes: ["privileged"] },
         { p: "sh cl", c: "show clock", modes: ["privileged"] },
+        { p: "sh fl", c: "show flash:", modes: ["privileged"] },
+        { p: "sh lo", c: "show logging", modes: ["privileged"] },
+        { p: "sh hi", c: "show history", modes: ["privileged"] },
+        { p: "sh us", c: "show users", modes: ["privileged"] },
+        { p: "sh inv", c: "show inventory", modes: ["privileged"] },
+        { p: "sh ar", c: "show arp", modes: ["privileged"] },
         { p: "sh po", c: "show port-security", modes: ["privileged"] },
         { p: "sh ip dh", c: "show ip dhcp snooping", modes: ["privileged"] },
         { p: "sh ip ar", c: "show ip arp inspection", modes: ["privileged"] },
@@ -283,6 +294,8 @@ export default function CiscoLabSimulator() {
         { p: "sh span", c: "show spanning-tree", modes: ["privileged"] },
         { p: "sh ipv6 ro", c: "show ipv6 route", modes: ["privileged"] },
         { p: "wr", c: "write memory", modes: ["privileged"] },
+        { p: "di", c: "disable", modes: ["privileged"] },
+        { p: "er", c: "erase startup-config", modes: ["privileged"] },
         { p: "pi", c: "ping ", modes: ["privileged", "user"] },
         { p: "tr", c: "traceroute ", modes: ["privileged", "user"] },
         // config
@@ -319,7 +332,6 @@ export default function CiscoLabSimulator() {
         { p: "sw po", c: "switchport port-security", modes: ["config-if"] },
         { p: "sw no", c: "switchport nonegotiate", modes: ["config-if"] },
         { p: "ch", c: "channel-group ", modes: ["config-if"] },
-        { p: "ip ad", c: "ip address ", modes: ["config-if"] },
         { p: "ip os", c: "ip ospf ", modes: ["config-if"] },
         { p: "ip na", c: "ip nat ", modes: ["config-if"] },
         { p: "ip dh", c: "ip dhcp snooping trust", modes: ["config-if"] },
@@ -334,7 +346,11 @@ export default function CiscoLabSimulator() {
         { p: "no ll r", c: "no lldp receive", modes: ["config-if"] },
         { p: "cd", c: "cdp enable", modes: ["config-if"] },
         { p: "no cd", c: "no cdp enable", modes: ["config-if"] },
-        { p: "de", c: "description ", modes: ["config-if"] },
+        { p: "de", c: "description ", modes: ["config-if", "config-subif"] },
+        // subinterface
+        { p: "en", c: "encapsulation dot1q ", modes: ["config-subif", "config-if"] },
+        { p: "ip ad", c: "ip address ", modes: ["config-if", "config-subif"] },
+        { p: "ip ar", c: "ip arp inspection trust", modes: ["config-if"] },
         // line
         { p: "lo", c: "login local", modes: ["config-line"] },
         { p: "tr", c: "transport input ", modes: ["config-line"] },
@@ -357,16 +373,16 @@ export default function CiscoLabSimulator() {
         { p: "de", c: "default-router ", modes: ["config-dhcp"] },
         { p: "dn", c: "dns-server ", modes: ["config-dhcp"] },
         // do from config
-        { p: "do sh r", c: "do show running-config", modes: ["config", "config-if", "config-line", "config-router", "config-vlan", "config-acl", "config-ext-acl", "config-dhcp"] },
-        { p: "do sh ip int", c: "do show ip interface brief", modes: ["config", "config-if"] },
-        { p: "do sh vl", c: "do show vlan brief", modes: ["config", "config-if"] },
-        { p: "do sh ip ro", c: "do show ip route", modes: ["config", "config-if"] },
-        { p: "do sh int t", c: "do show interfaces trunk", modes: ["config", "config-if"] },
-        { p: "do sh int sw", c: "do show interfaces switchport", modes: ["config", "config-if"] },
-        { p: "do sh eth", c: "do show etherchannel summary", modes: ["config", "config-if"] },
-        { p: "do sh mac", c: "do show mac address-table", modes: ["config", "config-if"] },
-        { p: "do sh span", c: "do show spanning-tree", modes: ["config", "config-if"] },
-        { p: "do wr", c: "do write memory", modes: ["config", "config-if"] },
+        { p: "do sh r", c: "do show running-config", modes: ["config", "config-if", "config-subif", "config-line", "config-router", "config-vlan", "config-acl", "config-ext-acl", "config-dhcp"] },
+        { p: "do sh ip int", c: "do show ip interface brief", modes: ["config", "config-if", "config-subif"] },
+        { p: "do sh vl", c: "do show vlan brief", modes: ["config", "config-if", "config-subif"] },
+        { p: "do sh ip ro", c: "do show ip route", modes: ["config", "config-if", "config-subif"] },
+        { p: "do sh int t", c: "do show interfaces trunk", modes: ["config", "config-if", "config-subif"] },
+        { p: "do sh int sw", c: "do show interfaces switchport", modes: ["config", "config-if", "config-subif"] },
+        { p: "do sh eth", c: "do show etherchannel summary", modes: ["config", "config-if", "config-subif"] },
+        { p: "do sh mac", c: "do show mac address-table", modes: ["config", "config-if", "config-subif"] },
+        { p: "do sh span", c: "do show spanning-tree", modes: ["config", "config-if", "config-subif"] },
+        { p: "do wr", c: "do write memory", modes: ["config", "config-if", "config-subif"] },
         { p: "do pi", c: "do ping ", modes: ["config", "config-if"] },
       ];
 

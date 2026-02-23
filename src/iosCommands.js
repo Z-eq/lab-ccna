@@ -53,11 +53,17 @@ export function processCommand(input, state) {
     if (first === "ping") return doPing(parts, state);
     if (first === "traceroute" || first === "trace") return doTraceroute(parts, state);
     if (first === "show" || first === "sh") return processShow(parts, state);
+    if (first === "logout" || first === "quit" || first === "exit") {
+      return { output: `${state.hostname} con0 is now available\n\nPress RETURN to get started.`, state: { ...state, mode: "user" } };
+    }
     return { output: `% Unknown command or computer name, or unable to find computer address`, state };
   }
 
   // ─── PRIVILEGED EXEC ────
   if (state.mode === "privileged") {
+    if (first === "disable" || first === "dis") {
+      return { output: "", state: { ...state, mode: "user" } };
+    }
     if (first === "configure" || first === "conf") {
       return { output: "Enter configuration commands, one per line. End with CNTL/Z.", state: { ...state, mode: "config" } };
     }
@@ -88,7 +94,20 @@ export function processCommand(input, state) {
       }));
       return { output: "Building configuration...\n[OK]", state };
     }
-    if (first === "clear") return { output: "", state };
+    if (first === "erase") {
+      if (lc.includes("startup")) {
+        state._startupSaved = false;
+        state._startupConfig = null;
+        return { output: "Erasing the nvram filesystem will remove all configuration files! Continue? [confirm]\n[OK]\nErase of nvram: complete", state };
+      }
+      return { output: `% Incomplete command.`, state };
+    }
+    if (first === "clear") {
+      if (lc.includes("arp") || lc.includes("ip arp")) return { output: "", state };
+      if (lc.includes("mac") || lc.includes("mac-address")) return { output: "", state };
+      if (lc.includes("counters")) return { output: "Clear \"show interface\" counters on all interfaces [confirm]", state };
+      return { output: "", state };
+    }
     if (first === "terminal") return { output: "", state };
     if (first === "clock" && parts[1] === "set") {
       return { output: "", state };
@@ -103,6 +122,9 @@ export function processCommand(input, state) {
     }
     if (first === "undebug" || first === "debug") return { output: first === "debug" ? "Debugging enabled" : "All possible debugging has been turned off", state };
     if (first === "reload") return { output: "Proceed with reload? [confirm]\n\nSystem Bootstrap, Version 15.1(4)M4\n...\nSystem restarted", state };
+    if (first === "logout" || first === "quit") {
+      return { output: `${state.hostname} con0 is now available\n\nPress RETURN to get started.`, state: { ...state, mode: "user" } };
+    }
     return { output: `% Unknown command '${first}'. Type '?' for help.`, state };
   }
 
@@ -140,7 +162,9 @@ export function processCommand(input, state) {
       }
       const ifName = normalizeInterface(rest);
       if (!state.interfaceCfg[ifName]) state.interfaceCfg[ifName] = [];
-      return { output: "", state: { ...state, mode: "config-if", currentInterface: ifName } };
+      // Subinterface detection (e.g., Ethernet0/0.10)
+      const isSubIf = ifName.includes(".");
+      return { output: "", state: { ...state, mode: isSubIf ? "config-subif" : "config-if", currentInterface: ifName } };
     }
     // no interface → remove interface config
     if (isNo && (pFirst === "interface" || pFirst === "int")) {
@@ -362,6 +386,8 @@ export function processCommand(input, state) {
       "ip cef", "no ip domain", "ip http", "no ip http",
       "access-list ", "ip access-group",
       "snmp", "aaa ", "tacacs", "radius",
+      "errdisable ", "mac address-table ", "ip verify ",
+      "spanning-tree mode", "spanning-tree vlan",
     ];
     const matchesKnown = knownGlobalPrefixes.some(p => lc.startsWith(p));
     if (matchesKnown) {
@@ -416,13 +442,13 @@ export function processCommand(input, state) {
     // ─── VALIDATE command before storing ───
     const validIfPrefixes = [
       "switchport ", "ip address", "ip nat ", "ip ospf", "ip dhcp", "ip access-group",
-      "ip helper-address", "ip proxy-arp",
+      "ip helper-address", "ip proxy-arp", "ip verify ",
       "ipv6 address", "ipv6 ospf", "ipv6 nd", "ipv6 enable",
       "shutdown", "no shutdown", "no switchport", "no ip", "no ipv6", "no spanning",
-      "no cdp", "no lldp", "no channel",
+      "no cdp", "no lldp", "no channel", "no encapsulation",
       "channel-group ", "spanning-tree ", "cdp ", "lldp ", "description ",
       "speed ", "duplex ", "media-type ", "negotiation ",
-      "ip arp inspection", "storm-control ",
+      "ip arp inspection", "storm-control ", "encapsulation ",
     ];
     const isValid = isNo || validIfPrefixes.some(p => lc.startsWith(p)) || lc === "shutdown";
     if (!isValid) {
@@ -480,10 +506,17 @@ export function processCommand(input, state) {
           if (positiveCmd === "switchport port-security") newPS[ifn].enabled = false;
           if (positiveParts.includes("maximum")) delete newPS[ifn].max;
           if (positiveParts.includes("violation")) delete newPS[ifn].violation;
+          if (positiveParts.includes("sticky")) newPS[ifn].sticky = false;
+          if (positiveParts.includes("mac-address") && !positiveParts.includes("sticky")) delete newPS[ifn].staticMac;
         } else {
           if (positiveParts.includes("maximum")) newPS[ifn].max = positiveParts[positiveParts.indexOf("maximum") + 1];
           if (positiveParts.includes("violation")) newPS[ifn].violation = positiveParts[positiveParts.indexOf("violation") + 1];
           if (lc === "switchport port-security") newPS[ifn].enabled = true;
+          if (positiveParts.includes("sticky")) newPS[ifn].sticky = true;
+          if (positiveParts.includes("mac-address") && !positiveParts.includes("sticky")) {
+            const macIdx = positiveParts.indexOf("mac-address");
+            if (positiveParts[macIdx + 1]) newPS[ifn].staticMac = positiveParts[macIdx + 1];
+          }
         }
       }
       return { output: "", state: { ...state, portSecurity: newPS, interfaceCfg: newIfCfg } };
@@ -496,6 +529,18 @@ export function processCommand(input, state) {
         const trusted = state.dhcpSnooping.trusted || [];
         if (!trusted.includes(iface)) {
           state.dhcpSnooping = { ...state.dhcpSnooping, trusted: [...trusted, iface] };
+        }
+      }
+      return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
+    }
+    // DAI trust on interface
+    if (pFirst === "ip" && positiveParts[1] === "arp" && positiveParts[2] === "inspection" && positiveParts[3] === "trust") {
+      const daiTrusted = state.daiConfig.trusted || [];
+      if (isNo) {
+        state.daiConfig = { ...state.daiConfig, trusted: daiTrusted.filter(x => x !== iface) };
+      } else {
+        if (!daiTrusted.includes(iface)) {
+          state.daiConfig = { ...state.daiConfig, trusted: [...daiTrusted, iface] };
         }
       }
       return { output: "", state: { ...state, interfaceCfg: newIfCfg } };
@@ -620,3 +665,4 @@ export function processCommand(input, state) {
 
   return { output: "", state };
 }
+
