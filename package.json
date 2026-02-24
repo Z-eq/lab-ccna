@@ -13,7 +13,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.0",
-    "rollup-plugin-obfuscator": "^0.4.0",
+    "rollup-obfuscator": "^0.4.0",
     "javascript-obfuscator": "^4.1.1",
     "vite": "^5.0.0"
   }
