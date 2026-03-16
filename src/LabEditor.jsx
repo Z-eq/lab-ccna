@@ -372,6 +372,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
     return data.choices?.[0]?.message?.content || "";
   },
 },
+  };  
   const aiGenerate = async () => {
     if (!aiApiKey.trim()) { setAiError("Ange API-nyckel först"); return; }
     if (!aiPrompt.trim()) { setAiError("Skriv en prompt"); return; }
