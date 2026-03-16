@@ -3,6 +3,24 @@ import ReactDOM from 'react-dom/client'
 import CiscoLabSimulator from './CiscoLabSimulator'
 import LabEditor from './LabEditor'
 
+// ─── Admin gate ───────────────────────────────────────────────────────────────
+const ADMIN_KEY = "secret123";
+const ADMIN_SESSION_KEY = "ccna_admin";
+
+(function handleAdminRoute() {
+  const m = window.location.pathname.match(/^\/admin\/(.+)$/);
+  if (m) {
+    if (m[1] === ADMIN_KEY) {
+      sessionStorage.setItem(ADMIN_SESSION_KEY, "1");
+    }
+    window.history.replaceState(null, "", "/");
+  }
+})();
+
+export function isAdmin() {
+  return sessionStorage.getItem(ADMIN_SESSION_KEY) === "1";
+}
+
 function App() {
   const [view, setView] = useState("simulator");
 
