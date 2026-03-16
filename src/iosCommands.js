@@ -4,6 +4,7 @@ import { normalizeInterface, parseInterfaceRange, cfgAdd, cfgRemove } from "./io
 import { processShow } from "./iosShow";
 import { getHelp } from "./iosHelp";
 import { doPing, doTraceroute } from "./iosNetwork";
+import { validateCommand } from "./iosValidate";
 
 export function processCommand(input, state) {
   const rawCmd = input.trim();
@@ -164,6 +165,12 @@ export function processCommand(input, state) {
       for (const ic of incompletes) {
         if (lc === ic) return { output: "% Incomplete command.", state };
       }
+    }
+
+    // ─── Syntax validation (before any branch processes the command) ───
+    if (!isNo) {
+      const v = validateCommand(rawCmd, state);
+      if (!v.ok) return { output: v.error, state };
     }
 
     // ─── Spanning-tree global commands ───
@@ -446,6 +453,12 @@ export function processCommand(input, state) {
       }
     }
 
+    // ─── Syntax validation ───
+    if (!isNo) {
+      const v = validateCommand(rawCmd, state);
+      if (!v.ok) return { output: v.error, state };
+    }
+
     // Navigate to another interface
     if ((first === "interface" || first === "int") && !isNo) {
       const rest = rawCmd.replace(/^(interface|int)\s+/i, "");
@@ -599,6 +612,10 @@ export function processCommand(input, state) {
     if (!isNo && !validLinePrefixes.some(p => lc.startsWith(p))) {
       return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
     }
+    if (!isNo) {
+      const v = validateCommand(rawCmd, state);
+      if (!v.ok) return { output: v.error, state };
+    }
     const newLineCfg = { ...state.lineCfg };
     if (!newLineCfg[line]) newLineCfg[line] = [];
     if (isNo) {
@@ -620,6 +637,11 @@ export function processCommand(input, state) {
     const isNo = first === "no";
     if (!isNo && !validRtrPrefixes.some(p => lc.startsWith(p))) {
       return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
+    }
+    // Syntax validation for router-config commands
+    if (!isNo) {
+      const v = validateCommand(rawCmd, state);
+      if (!v.ok) return { output: v.error, state };
     }
     const newRtrCfg = { ...state.routerCfg };
     if (!newRtrCfg[router]) newRtrCfg[router] = [];
@@ -664,6 +686,11 @@ export function processCommand(input, state) {
     const validAclPrefixes = ["permit ", "deny ", "remark ", "no "];
     if (!validAclPrefixes.some(p => lc.startsWith(p))) {
       return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
+    }
+    // Validate permit/deny syntax
+    if (first === "permit" || first === "deny") {
+      const v = validateCommand(rawCmd, state);
+      if (!v.ok) return { output: v.error, state };
     }
     const newAclCfg = { ...state.aclCfg };
     if (!newAclCfg[acl]) newAclCfg[acl] = [];
