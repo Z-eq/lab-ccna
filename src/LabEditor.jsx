@@ -348,32 +348,30 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
       },
     },
     
-   minimax: {  // ← minimax kommer in här
-      name: "MiniMax M2.5",
-      icon: "⚡",
-      url: "https://api.minimax.com/anthropic/v1",
-      buildRequest: (prompt, key) => ({
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${key}`,
-        },
-        body: JSON.stringify({
-          model: "MiniMax-M2.5",
-          max_tokens: 4096,
-          messages: [
-            { role: "system", content: AI_SYSTEM_PROMPT },
-            { role: "user",   content: prompt },
-          ],
-        }),
-      }),
-      extractText: (data) => {
-        if (data.base_resp && data.base_resp.status_code !== 0)
-          throw new Error(data.base_resp.status_msg || "MiniMax API error");
-        return data.choices?.[0]?.message?.content || "";
-      },
+   minimax: {
+  name: "MiniMax M2.5",
+  icon: "⚡",
+  url: "https://api.minimax.io/v1/chat/completions",
+  buildRequest: (prompt, key) => ({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${key}`,
     },
-  }; 
+    body: JSON.stringify({
+      model: "MiniMax-M2.5",
+      max_tokens: 4096,
+      messages: [
+        { role: "system", content: AI_SYSTEM_PROMPT },
+        { role: "user",   content: prompt },
+      ],
+    }),
+  }),
+  extractText: (data) => {
+    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    return data.choices?.[0]?.message?.content || "";
+  },
+},
   const aiGenerate = async () => {
     if (!aiApiKey.trim()) { setAiError("Ange API-nyckel först"); return; }
     if (!aiPrompt.trim()) { setAiError("Skriv en prompt"); return; }
