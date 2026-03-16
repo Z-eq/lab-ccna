@@ -6,6 +6,7 @@ import { createDeviceState, getPrompt } from "./iosHelpers";
 import { processCommand } from "./iosCommands";
 import { buildRunningConfig } from "./iosConfig";
 import { getTaskResults } from "./taskVerification";
+import { isAdmin } from "./main";
 
 // ─── URL helpers ──────────────────────────────────────────────────────────────
 function getLabIdFromUrl() {
@@ -795,10 +796,12 @@ export default function CiscoLabSimulator() {
                         style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, border: `1px solid ${T.border}`, background: T.bg, color: T.switchText, cursor: "pointer", fontFamily: "inherit" }}>
                         Open {task.device}
                       </button>
+                      {isAdmin() && (
                       <button onClick={() => setShowHint(prev => ({ ...prev, [key]: !prev[key] }))}
                         style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, border: `1px solid ${T.border}`, background: T.bg, color: T.warn, cursor: "pointer", fontFamily: "inherit" }}>
                         {hintVisible ? "Hide" : "Show"} Solution
                       </button>
+                      )}
                     </div>
                     {hintVisible && (
                       <div style={{ padding: "8px 12px", background: T.hintBg, borderTop: `1px solid ${T.border}` }}>
