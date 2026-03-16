@@ -775,7 +775,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
                     type={showApiKey ? "text" : "password"}
                     value={aiApiKey}
                     onChange={e => setAiApiKey(e.target.value)}
-                    placeholder={aiProvider === "claude" ? "sk-ant-..." : aiProvider === "openai" ? "sk-..." : "AIzaSy..."}
+                    placeholder={aiProvider === "claude" ? "sk-ant-..." : aiProvider === "openai" ? "sk-..." : "AIzaSy...": aiProvider === "minimax"  ? "eyJhbGci..."}
                     style={{ fontFamily: fontMono, fontSize: 11 }}
                   />
                 </div>
