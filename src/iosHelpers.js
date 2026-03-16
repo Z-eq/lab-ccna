@@ -124,22 +124,10 @@ export function cfgAdd(arr, cmd) {
 
 export function cfgRemove(arr, noCmd) {
   // noCmd is "no switchport mode access" → remove "switchport mode access"
+  // Never adds the "no X" form — callers handle that explicitly for default-on cmds
   const positive = noCmd.replace(/^no\s+/, "").trim().toLowerCase();
   if (!positive) return arr;
-  // Remove any line that starts with the positive command
-  const filtered = arr.filter(x => {
-    if (x === positive) return false;
-    if (x.startsWith(positive + " ")) return false;
-    // Also handle "no shutdown" → remove "shutdown"
-    return true;
-  });
-  // If nothing removed and this is a meaningful no-command, add the no version
-  if (filtered.length === arr.length) {
-    const c = noCmd.trim().toLowerCase();
-    if (arr.includes(c)) return arr;
-    return [...arr, c];
-  }
-  return filtered;
+  return arr.filter(x => x !== positive && !x.startsWith(positive + " "));
 }
 
 export function cfgSet(arr, cmd) {

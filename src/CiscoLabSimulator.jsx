@@ -317,152 +317,202 @@ export default function CiscoLabSimulator() {
       else { setCmdHistoryIdx(-1); setCurrentInput(""); }
     } else if (e.key === "Tab") {
       e.preventDefault();
-      const partial = currentInput.toLowerCase().trim();
-      // Context-aware tab completion
-      const isConfig = currentState?.mode?.startsWith("config");
-      const isIf = currentState?.mode === "config-if";
-      const allCompletions = [
-        // universal
-        { p: "en", c: "enable", modes: ["user"] },
-        { p: "conf", c: "configure terminal", modes: ["privileged"] },
-        { p: "sh r", c: "show running-config", modes: ["privileged", "user"] },
-        { p: "sh ip int", c: "show ip interface brief", modes: ["privileged", "user"] },
-        { p: "sh ip ro", c: "show ip route", modes: ["privileged", "user"] },
-        { p: "sh vl", c: "show vlan brief", modes: ["privileged", "user"] },
-        { p: "sh ip os", c: "show ip ospf", modes: ["privileged"] },
-        { p: "sh cdp n", c: "show cdp neighbors", modes: ["privileged"] },
-        { p: "sh cd", c: "show cdp", modes: ["privileged"] },
-        { p: "sh lldp n", c: "show lldp neighbors", modes: ["privileged"] },
-        { p: "sh ll", c: "show lldp", modes: ["privileged"] },
-        { p: "sh ip os n", c: "show ip ospf neighbor", modes: ["privileged"] },
-        { p: "sh ip os int", c: "show ip ospf interface", modes: ["privileged"] },
-        { p: "sh ip ac", c: "show ip access-lists", modes: ["privileged"] },
-        { p: "sh ip na", c: "show ip nat translations", modes: ["privileged"] },
-        { p: "sh ip ss", c: "show ip ssh", modes: ["privileged"] },
-        { p: "sh ip pr", c: "show ip protocols", modes: ["privileged"] },
-        { p: "sh ver", c: "show version", modes: ["privileged"] },
-        { p: "sh cl", c: "show clock", modes: ["privileged"] },
-        { p: "sh fl", c: "show flash:", modes: ["privileged"] },
-        { p: "sh lo", c: "show logging", modes: ["privileged"] },
-        { p: "sh hi", c: "show history", modes: ["privileged"] },
-        { p: "sh us", c: "show users", modes: ["privileged"] },
-        { p: "sh inv", c: "show inventory", modes: ["privileged"] },
-        { p: "sh ar", c: "show arp", modes: ["privileged"] },
-        { p: "sh po", c: "show port-security", modes: ["privileged"] },
-        { p: "sh ip dh", c: "show ip dhcp snooping", modes: ["privileged"] },
-        { p: "sh ip ar", c: "show ip arp inspection", modes: ["privileged"] },
-        { p: "sh eth", c: "show etherchannel summary", modes: ["privileged"] },
-        { p: "sh int t", c: "show interfaces trunk", modes: ["privileged"] },
-        { p: "sh int sw", c: "show interfaces switchport", modes: ["privileged"] },
-        { p: "sh int st", c: "show interfaces status", modes: ["privileged"] },
-        { p: "sh mac", c: "show mac address-table", modes: ["privileged"] },
-        { p: "sh span", c: "show spanning-tree", modes: ["privileged"] },
-        { p: "sh ipv6 ro", c: "show ipv6 route", modes: ["privileged"] },
-        { p: "wr", c: "write memory", modes: ["privileged"] },
-        { p: "di", c: "disable", modes: ["privileged"] },
-        { p: "er", c: "erase startup-config", modes: ["privileged"] },
-        { p: "pi", c: "ping ", modes: ["privileged", "user"] },
-        { p: "tr", c: "traceroute ", modes: ["privileged", "user"] },
-        // config
-        { p: "int ", c: "interface ", modes: ["config"] },
-        { p: "int e", c: "interface Ethernet", modes: ["config"] },
-        { p: "int g", c: "interface GigabitEthernet", modes: ["config"] },
-        { p: "int lo", c: "interface Loopback", modes: ["config"] },
-        { p: "int ra", c: "interface range ", modes: ["config"] },
-        { p: "ip ro", c: "ip route ", modes: ["config"] },
-        { p: "ip ac", c: "ip access-list ", modes: ["config"] },
-        { p: "ip na", c: "ip nat ", modes: ["config"] },
-        { p: "ip dh", c: "ip dhcp ", modes: ["config"] },
-        { p: "ip do", c: "ip domain-name ", modes: ["config"] },
-        { p: "ipv6 ro", c: "ipv6 route ", modes: ["config"] },
-        { p: "ipv6 u", c: "ipv6 unicast-routing", modes: ["config"] },
-        { p: "vl", c: "vlan ", modes: ["config"] },
-        { p: "li", c: "line vty 0 4", modes: ["config"] },
-        { p: "us", c: "username ", modes: ["config"] },
-        { p: "ro", c: "router ospf ", modes: ["config"] },
-        { p: "ll", c: "lldp run", modes: ["config"] },
-        { p: "cd", c: "cdp run", modes: ["config"] },
-        { p: "cr", c: "crypto key generate rsa", modes: ["config"] },
-        { p: "nt", c: "ntp ", modes: ["config"] },
-        { p: "ho", c: "hostname ", modes: ["config"] },
-        { p: "sp", c: "spanning-tree ", modes: ["config"] },
-        { p: "no", c: "no ", modes: ["config", "config-if", "config-line", "config-router"] },
-        // interface
-        { p: "sw m", c: "switchport mode ", modes: ["config-if"] },
-        { p: "sw ac", c: "switchport access vlan ", modes: ["config-if"] },
-        { p: "sw vo", c: "switchport voice vlan ", modes: ["config-if"] },
-        { p: "sw tr e", c: "switchport trunk encapsulation dot1q", modes: ["config-if"] },
-        { p: "sw tr a", c: "switchport trunk allowed vlan ", modes: ["config-if"] },
-        { p: "sw tr n", c: "switchport trunk native vlan ", modes: ["config-if"] },
-        { p: "sw po", c: "switchport port-security", modes: ["config-if"] },
-        { p: "sw no", c: "switchport nonegotiate", modes: ["config-if"] },
-        { p: "ch", c: "channel-group ", modes: ["config-if"] },
-        { p: "ip os", c: "ip ospf ", modes: ["config-if"] },
-        { p: "ip na", c: "ip nat ", modes: ["config-if"] },
-        { p: "ip dh", c: "ip dhcp snooping trust", modes: ["config-if"] },
-        { p: "ipv6 ad", c: "ipv6 address ", modes: ["config-if"] },
-        { p: "no sh", c: "no shutdown", modes: ["config-if"] },
-        { p: "sh", c: "shutdown", modes: ["config-if"] },
-        { p: "sp p", c: "spanning-tree portfast", modes: ["config-if"] },
-        { p: "sp b", c: "spanning-tree bpduguard enable", modes: ["config-if"] },
-        { p: "ll t", c: "lldp transmit", modes: ["config-if"] },
-        { p: "ll r", c: "lldp receive", modes: ["config-if"] },
-        { p: "no ll t", c: "no lldp transmit", modes: ["config-if"] },
-        { p: "no ll r", c: "no lldp receive", modes: ["config-if"] },
-        { p: "cd", c: "cdp enable", modes: ["config-if"] },
-        { p: "no cd", c: "no cdp enable", modes: ["config-if"] },
-        { p: "de", c: "description ", modes: ["config-if", "config-subif"] },
-        // subinterface
-        { p: "en", c: "encapsulation dot1q ", modes: ["config-subif", "config-if"] },
-        { p: "ip ad", c: "ip address ", modes: ["config-if", "config-subif"] },
-        { p: "ip ar", c: "ip arp inspection trust", modes: ["config-if"] },
-        // line
-        { p: "lo", c: "login local", modes: ["config-line"] },
-        { p: "tr", c: "transport input ", modes: ["config-line"] },
-        { p: "pa", c: "password ", modes: ["config-line"] },
-        { p: "ex", c: "exec-timeout ", modes: ["config-line"] },
-        // router
-        { p: "ne", c: "network ", modes: ["config-router"] },
-        { p: "ro", c: "router-id ", modes: ["config-router"] },
-        { p: "pa", c: "passive-interface ", modes: ["config-router"] },
-        { p: "lo", c: "log-adjacency-changes", modes: ["config-router"] },
-        { p: "re", c: "redistribute ", modes: ["config-router"] },
-        // vlan
-        { p: "na", c: "name ", modes: ["config-vlan"] },
-        // acl
-        { p: "pe", c: "permit ", modes: ["config-acl", "config-ext-acl"] },
-        { p: "de", c: "deny ", modes: ["config-acl", "config-ext-acl"] },
-        { p: "re", c: "remark ", modes: ["config-acl", "config-ext-acl"] },
-        // dhcp
-        { p: "ne", c: "network ", modes: ["config-dhcp"] },
-        { p: "de", c: "default-router ", modes: ["config-dhcp"] },
-        { p: "dn", c: "dns-server ", modes: ["config-dhcp"] },
-        // do from config
-        { p: "do sh r", c: "do show running-config", modes: ["config", "config-if", "config-subif", "config-line", "config-router", "config-vlan", "config-acl", "config-ext-acl", "config-dhcp"] },
-        { p: "do sh ip int", c: "do show ip interface brief", modes: ["config", "config-if", "config-subif"] },
-        { p: "do sh vl", c: "do show vlan brief", modes: ["config", "config-if", "config-subif"] },
-        { p: "do sh ip ro", c: "do show ip route", modes: ["config", "config-if", "config-subif"] },
-        { p: "do sh int t", c: "do show interfaces trunk", modes: ["config", "config-if", "config-subif"] },
-        { p: "do sh int sw", c: "do show interfaces switchport", modes: ["config", "config-if", "config-subif"] },
-        { p: "do sh eth", c: "do show etherchannel summary", modes: ["config", "config-if", "config-subif"] },
-        { p: "do sh mac", c: "do show mac address-table", modes: ["config", "config-if", "config-subif"] },
-        { p: "do sh span", c: "do show spanning-tree", modes: ["config", "config-if", "config-subif"] },
-        { p: "do wr", c: "do write memory", modes: ["config", "config-if", "config-subif"] },
-        { p: "do pi", c: "do ping ", modes: ["config", "config-if"] },
-      ];
+      const partial = currentInput;
+      const mode = currentState?.mode || "user";
 
-      const mode = currentState?.mode || "";
-      const candidates = allCompletions.filter(c =>
-        c.modes.some(m => mode === m || (m === "config" && mode.startsWith("config")))
-        && partial.startsWith(c.p)
-        && partial.length >= c.p.length
-        && partial.length <= c.p.length + 4
-      );
+      // ─── Full IOS command database per mode ───────────────────────────────
+      const IOS_CMDS = {
+        user: [
+          "enable", "exit", "logout", "ping", "show", "traceroute",
+        ],
+        privileged: [
+          "clear arp-cache", "clear counters", "clear ip arp", "clear mac address-table dynamic",
+          "clock set",
+          "configure terminal",
+          "copy running-config startup-config", "copy startup-config running-config",
+          "crypto key generate rsa",
+          "debug all", "disable",
+          "erase startup-config",
+          "exit", "logout",
+          "ping", "reload",
+          "show arp",
+          "show cdp neighbors", "show cdp neighbors detail",
+          "show clock",
+          "show etherchannel summary",
+          "show flash:",
+          "show history",
+          "show interfaces", "show interfaces status", "show interfaces switchport", "show interfaces trunk",
+          "show inventory",
+          "show ip access-lists",
+          "show ip arp inspection", "show ip arp inspection statistics",
+          "show ip dhcp binding", "show ip dhcp snooping", "show ip dhcp snooping binding",
+          "show ip interface brief",
+          "show ip nat translations",
+          "show ip ospf", "show ip ospf interface", "show ip ospf neighbor",
+          "show ip protocols",
+          "show ip route",
+          "show ip ssh",
+          "show ipv6 route",
+          "show lldp neighbors", "show lldp neighbors detail",
+          "show logging",
+          "show mac address-table",
+          "show port-security", "show port-security interface",
+          "show running-config",
+          "show spanning-tree",
+          "show startup-config",
+          "show users", "show version",
+          "show vlan", "show vlan brief",
+          "ssh", "terminal length 0", "traceroute",
+          "undebug all",
+          "write memory",
+        ],
+        config: [
+          "cdp run",
+          "crypto key generate rsa",
+          "do show running-config", "do show ip interface brief", "do show vlan brief",
+          "do show ip route", "do show interfaces trunk", "do show etherchannel summary",
+          "do write memory", "do ping",
+          "hostname",
+          "interface Ethernet0/0", "interface Ethernet0/1", "interface Ethernet0/2", "interface Ethernet0/3",
+          "interface GigabitEthernet0/0", "interface GigabitEthernet0/1",
+          "interface Loopback0", "interface Loopback1",
+          "interface Port-channel1",
+          "interface range",
+          "ip access-list extended", "ip access-list standard",
+          "ip arp inspection validate", "ip arp inspection vlan",
+          "ip dhcp excluded-address", "ip dhcp pool",
+          "ip dhcp snooping", "ip dhcp snooping vlan", "ip dhcp snooping verify mac-address",
+          "ip domain-name",
+          "ip nat inside source list", "ip nat pool",
+          "ip route",
+          "ip ssh version 2",
+          "ipv6 route", "ipv6 unicast-routing",
+          "line console 0", "line vty 0 4",
+          "lldp run",
+          "no cdp run", "no ip domain-lookup", "no ip http server", "no ip http secure-server",
+          "ntp master", "ntp server",
+          "router ospf",
+          "spanning-tree mode rapid-pvst", "spanning-tree vlan",
+          "username",
+          "vlan",
+        ],
+        "config-if": [
+          "cdp enable",
+          "channel-group",
+          "description",
+          "duplex auto", "duplex full", "duplex half",
+          "encapsulation dot1q",
+          "ip access-group",
+          "ip address", "ip address dhcp",
+          "ip arp inspection trust",
+          "ip dhcp snooping trust",
+          "ip helper-address",
+          "ip nat inside", "ip nat outside",
+          "ip ospf",
+          "ipv6 address", "ipv6 enable",
+          "lldp receive", "lldp transmit",
+          "no cdp enable",
+          "no lldp receive", "no lldp transmit",
+          "no shutdown",
+          "no switchport",
+          "shutdown",
+          "spanning-tree bpduguard enable", "spanning-tree portfast",
+          "speed",
+          "storm-control broadcast level",
+          "switchport access vlan",
+          "switchport mode access", "switchport mode trunk",
+          "switchport nonegotiate",
+          "switchport port-security",
+          "switchport port-security maximum",
+          "switchport port-security violation protect",
+          "switchport port-security violation restrict",
+          "switchport port-security violation shutdown",
+          "switchport trunk allowed vlan",
+          "switchport trunk encapsulation dot1q",
+          "switchport trunk native vlan",
+          "switchport voice vlan",
+        ],
+        "config-subif": [
+          "description", "encapsulation dot1q",
+          "ip address", "ip helper-address", "ip nat inside", "ip nat outside", "ip ospf",
+          "ipv6 address", "no shutdown", "shutdown",
+        ],
+        "config-line": [
+          "exec-timeout", "login local", "no exec-timeout",
+          "password", "privilege level 15",
+          "transport input all", "transport input none", "transport input ssh", "transport input telnet",
+        ],
+        "config-router": [
+          "area", "auto-cost reference-bandwidth",
+          "default-information originate", "distance",
+          "log-adjacency-changes",
+          "network",
+          "no passive-interface", "passive-interface", "passive-interface default",
+          "redistribute connected", "redistribute static",
+          "router-id",
+        ],
+        "config-vlan": ["name", "state active", "state suspend"],
+        "config-acl": ["deny", "permit", "remark"],
+        "config-ext-acl": [
+          "deny icmp", "deny ip", "deny tcp", "deny udp",
+          "permit icmp", "permit ip", "permit tcp", "permit udp",
+          "remark",
+        ],
+        "config-dhcp": [
+          "default-router", "dns-server", "domain-name", "lease", "network", "option",
+        ],
+      };
 
-      if (candidates.length > 0) {
-        // Pick the best match (longest prefix match)
-        const best = candidates.sort((a, b) => b.p.length - a.p.length)[0];
-        setCurrentInput(best.c);
+      // config-if completions also available in all config sub-modes via "do"
+      const allConfigModes = ["config", "config-if", "config-subif", "config-line", "config-router", "config-vlan", "config-acl", "config-ext-acl", "config-dhcp"];
+
+      let cmdList = IOS_CMDS[mode] || [];
+      // In all config sub-modes, add do-commands from config list
+      if (mode !== "config" && allConfigModes.includes(mode)) {
+        const doCmds = (IOS_CMDS["config"] || []).filter(c => c.startsWith("do "));
+        cmdList = [...cmdList, ...doCmds];
+      }
+
+      // ─── Find completions ─────────────────────────────────────────────────
+      const lowerPartial = partial.toLowerCase();
+      const matches = lowerPartial
+        ? cmdList.filter(c => c.toLowerCase().startsWith(lowerPartial))
+        : cmdList;
+
+      if (matches.length === 0) {
+        // No match — do nothing (like real IOS)
+      } else if (matches.length === 1) {
+        // Exactly one match — complete it, add trailing space
+        const completed = matches[0];
+        setCurrentInput(completed.endsWith(" ") ? completed : completed + " ");
+      } else {
+        // Multiple matches — show them in terminal, complete common prefix
+        const commonPrefix = matches.reduce((pfx, str) => {
+          const s = str.toLowerCase();
+          let i = 0;
+          while (i < pfx.length && i < s.length && pfx[i] === s[i]) i++;
+          return pfx.slice(0, i);
+        }, matches[0].toLowerCase());
+
+        // Format like real IOS: two columns
+        const maxLen = Math.max(...matches.map(c => c.length));
+        const colW = Math.min(maxLen + 2, 36);
+        const cols = Math.max(1, Math.floor(80 / colW));
+        const rows = [];
+        for (let i = 0; i < matches.length; i += cols) {
+          rows.push(matches.slice(i, i + cols).map(c => c.padEnd(colW)).join("").trimEnd());
+        }
+
+        setTerminalHistory(h => [
+          ...h,
+          { type: "output", text: `${currentState ? (currentState.hostname + (mode === "user" ? ">" : mode === "privileged" ? "#" : mode === "config" ? "(config)#" : "(config-if)#")) : ""}${partial}` },
+          { type: "output", text: rows.join("\n") },
+        ]);
+
+        // Complete to common prefix if it's longer than what user typed
+        if (commonPrefix.length > lowerPartial.length) {
+          setCurrentInput(commonPrefix);
+        }
       }
     }
   }, [handleCommand, cmdHistoryIdx, currentState, currentInput]);

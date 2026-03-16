@@ -418,16 +418,8 @@ export function processCommand(input, state) {
       else { state.globalCmds = cfgAdd(state.globalCmds, lc); }
       return { output: "", state };
     }
-    // Generic no command for known prefixes
+    // Generic no command — just remove the positive form, never store "no X" for unknown cmds
     if (isNo) {
-      // Check if the positive form exists in config
-      const posCmd = lc.replace(/^no\s+/, "");
-      const existed = state.globalCmds.some(c => c.startsWith(posCmd.split(/\s+/)[0]));
-      if (existed) {
-        state.globalCmds = cfgRemove(state.globalCmds, lc);
-        return { output: "", state };
-      }
-      // Still allow "no" for known command families
       state.globalCmds = cfgRemove(state.globalCmds, lc);
       return { output: "", state };
     }
@@ -480,12 +472,29 @@ export function processCommand(input, state) {
 
     // ─── Apply validated command to config ───
     const newIfCfg = { ...state.interfaceCfg };
+
+    // Commands that are ON by default on an interface — their no-form must be stored explicitly
+    // (e.g. CDP is on by default, so "no cdp enable" must appear in running-config)
+    const DEFAULT_ON_IF_CMDS = [
+      "cdp enable", "ip proxy-arp", "ip redirects", "ip unreachables",
+      "lldp transmit", "lldp receive",
+    ];
+
     for (const ifn of rangeIfs) {
       if (!newIfCfg[ifn]) newIfCfg[ifn] = [];
       if (isNo) {
-        newIfCfg[ifn] = cfgRemove(newIfCfg[ifn], lc);
+        const positiveForm = lc.replace(/^no\s+/, "");
+        if (DEFAULT_ON_IF_CMDS.some(c => positiveForm === c || positiveForm.startsWith(c + " "))) {
+          // Remove positive form (if present) and explicitly store the no-form
+          newIfCfg[ifn] = [...newIfCfg[ifn].filter(x => x !== positiveForm && !x.startsWith(positiveForm + " ")), lc];
+        } else {
+          // Just remove positive form — don't store "no X" in running-config
+          newIfCfg[ifn] = cfgRemove(newIfCfg[ifn], lc);
+        }
       } else {
-        newIfCfg[ifn] = cfgAdd(newIfCfg[ifn], lc);
+        // Adding a positive command also removes any existing "no X" form
+        const noForm = "no " + lc;
+        newIfCfg[ifn] = cfgAdd(newIfCfg[ifn].filter(x => x !== noForm), lc);
       }
     }
 
