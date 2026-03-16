@@ -771,12 +771,19 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
                       {showApiKey ? "🙈 Dölj" : "👁️ Visa"}
                     </button>
                   </label>
-                  <FInput inputStyle={S.input} focusStyle={S.inputFocus}
-                    type={showApiKey ? "text" : "password"}
-                    value={aiApiKey}
-                    onChange={e => setAiApiKey(e.target.value)}
-                    placeholder={aiProvider === "claude" ? "sk-ant-..." : aiProvider === "openai" ? "sk-..." : "AIzaSy...": aiProvider === "minimax"  ? "eyJhbGci..."}
-                    style={{ fontFamily: fontMono, fontSize: 11 }}
+                 <FInput 
+  inputStyle={S.input} 
+  focusStyle={S.inputFocus}
+  type={showApiKey ? "text" : "password"}
+  value={aiApiKey}
+  onChange={e => setAiApiKey(e.target.value)}
+  placeholder={
+    aiProvider === "claude" ? "sk-ant-..." : 
+    aiProvider === "openai" ? "sk-..." : 
+    aiProvider === "gemini" ? "AIzaSy..." : 
+    aiProvider === "minimax" ? "eyJhbGci..." : "Klistra in nyckel..."
+  }
+  style={{ fontFamily: fontMono, fontSize: 11 }}
                   />
                 </div>
               </div>
