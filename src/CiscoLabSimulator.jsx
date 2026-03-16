@@ -7,8 +7,14 @@ import { processCommand } from "./iosCommands";
 import { buildRunningConfig } from "./iosConfig";
 import { getTaskResults } from "./taskVerification";
 
+// ─── URL helpers ──────────────────────────────────────────────────────────────
+function getLabIdFromUrl() {
+  const m = window.location.pathname.match(/^\/lab\/(\d+)$/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 export default function CiscoLabSimulator() {
-  const [selectedLab, setSelectedLab] = useState(null);
+  const [selectedLab, setSelectedLab] = useState(() => getLabIdFromUrl());
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [deviceStates, setDeviceStates] = useState({});
   const [terminalHistory, setTerminalHistory] = useState([]);
@@ -66,8 +72,36 @@ export default function CiscoLabSimulator() {
     document.addEventListener("mouseup", onUp);
   }, [sidebarWidth]);
   const [filterCategory, setFilterCategory] = useState("All");
-  const [showLabList, setShowLabList] = useState(true);
+  const [showLabList, setShowLabList] = useState(() => !getLabIdFromUrl());
   const [darkMode, setDarkMode] = useState(true);
+
+  // ─── URL-based navigation ──────────────────────────────────────────────────
+  const navigateToLab = useCallback((labId) => {
+    window.history.pushState({ labId }, "", `/lab/${labId}`);
+    setSelectedLab(labId);
+    setShowLabList(false);
+  }, []);
+
+  const navigateHome = useCallback(() => {
+    window.history.pushState(null, "", "/");
+    setSelectedLab(null);
+    setShowLabList(true);
+  }, []);
+
+  useEffect(() => {
+    const onPop = () => {
+      const labId = getLabIdFromUrl();
+      if (labId) {
+        setSelectedLab(labId);
+        setShowLabList(false);
+      } else {
+        setSelectedLab(null);
+        setShowLabList(true);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const [toasts, setToasts] = useState([]);
   const [showDesc, setShowDesc] = useState(true);
   const [checkResults, setCheckResults] = useState(null);
@@ -506,7 +540,7 @@ export default function CiscoLabSimulator() {
               {filteredLabs.filter(l => !l._custom).map(l => {
                 const progress = getLabProgress(l.id);
                 return (
-                  <div key={l.id} onClick={() => { setSelectedLab(l.id); setShowLabList(false); }}
+                  <div key={l.id} onClick={() => navigateToLab(l.id)}
                     style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20, cursor: "pointer", transition: "all 0.25s", position: "relative", overflow: "hidden" }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent + "55"; e.currentTarget.style.transform = "translateY(-2px)"; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.transform = "translateY(0)"; }}>
@@ -557,7 +591,7 @@ export default function CiscoLabSimulator() {
                       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${T.accentAlt}, ${T.accent})` }}>
                         <div style={{ height: "100%", width: `${progress}%`, background: progress === 100 ? T.accent : T.accentAlt, transition: "width 0.3s" }} />
                       </div>
-                      <div onClick={() => { setSelectedLab(l.id); setShowLabList(false); }} style={{ cursor: "pointer" }}>
+                      <div onClick={() => navigateToLab(l.id)} style={{ cursor: "pointer" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                             <span style={{ fontSize: 11, color: T.accentAlt, background: T.catBg, padding: "2px 8px", borderRadius: 6 }}>{l.category}</span>
@@ -625,7 +659,7 @@ export default function CiscoLabSimulator() {
       <div style={{ width: sidebarWidth, minWidth: 250, maxWidth: 800, background: T.bgAlt, borderRight: "none", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "14px 16px", borderBottom: `1px solid ${T.border}`, background: T.card }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <button onClick={() => setShowLabList(true)} style={{ background: "none", border: `1px solid ${T.border}`, color: T.textMuted, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>← Labs</button>
+            <button onClick={navigateHome} style={{ background: "none", border: `1px solid ${T.border}`, color: T.textMuted, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>← Labs</button>
             <span style={{ fontSize: 11, color: T.accentAlt, background: T.catBg, padding: "2px 8px", borderRadius: 6 }}>{lab.category}</span>
             <button onClick={() => {
               if (!confirm("Reset lab? All config will be lost.")) return;
