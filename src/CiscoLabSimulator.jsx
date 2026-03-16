@@ -556,7 +556,7 @@ export default function CiscoLabSimulator() {
   // ─── LAB LIST VIEW ───
   if (showLabList || !selectedLab) {
     return (
-      <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", transition: "background 0.3s, color 0.3s" }}>
+      <div style={{ minHeight: "100vh", overflowY: "auto", background: T.bg, color: T.text, fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", transition: "background 0.3s, color 0.3s" }}>
         <style>{styleTag}</style>
         <div style={{ background: T.headerGrad, borderBottom: `1px solid ${T.borderAccent}`, padding: "24px 32px" }}>
           <div style={{ display: "flex", alignItems: "center", maxWidth: 1400, margin: "0 auto" }}>
