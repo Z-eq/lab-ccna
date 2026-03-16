@@ -49,9 +49,9 @@ export const LABS = [
       { id: 3, text: "Configure R1 DHCP server: pool NETPOOL, network 10.1.3.0/24, exclude addresses 1-10.", device: "R1",
         hint: "ip dhcp excluded-address 10.1.3.1 10.1.3.10\nip dhcp pool NETPOOL\nnetwork 10.1.3.0 255.255.255.0",
         check: [["ip dhcp excluded-address","10.1.3.1","10.1.3.10"],["ip dhcp pool","netpool"],["network","10.1.3.0","255.255.255.0"]] },
-      { id: 4, text: "Configure SSH on R3: user netadmin/N3t4ccess, RSA 1024 bits, SSH only on VTY lines.", device: "R3",
-        hint: "username netadmin password N3t4ccess\nip domain-name lab.local\ncrypto key generate rsa\n1024\nline vty 0 4\ntransport input ssh\nlogin local",
-        check: [["username","netadmin"],["crypto key generate rsa"],["transport input ssh"],["login local"]] }
+      { id: 4, text: "Configure SSH on R3: user netadmin/N3t4ccess, privilege 15, RSA 1024 bits, SSH only on VTY lines.", device: "R3",
+        hint: "username netadmin privilege 15 secret N3t4ccess\nip domain-name lab.local\ncrypto key generate rsa\n1024\nline vty 0 4\ntransport input ssh\nlogin local",
+        check: [["username","netadmin","privilege","15"],["secret","n3t4ccess"],["crypto key generate rsa"],["transport input ssh"],["login local"]] }
     ]
   },
   {
@@ -90,8 +90,8 @@ export const LABS = [
     topology: `Internet ── Gw1 ── Sw1 ── PCs\n               VLAN 10`,
     tasks: [
       { id: 1, text: "Configure local account on Gw1: username wheel, password lock3path, algorithm scrypt, exec privilege. Telnet only on VTY 0-4.", device: "Gw1",
-        hint: "username wheel algorithm-type scrypt secret lock3path\nline vty 0 4\nlogin local\ntransport input telnet",
-        check: [["username","wheel"],["secret","lock3path"],["login local"],["transport input telnet"]] },
+        hint: "username wheel privilege 15 algorithm-type scrypt secret lock3path\nline vty 0 4\nlogin local\ntransport input telnet",
+        check: [["username","wheel","privilege","15","algorithm-type","scrypt"],["secret","lock3path"],["login local"],["transport input telnet"]] },
       { id: 2, text: "Configure NACL CORP_ACL on Gw1: allow BOOTP (UDP 67-68) and HTTPS (TCP 443), deny all other traffic with log-input", device: "Gw1",
         hint: "ip access-list extended CORP_ACL\npermit udp any any range 67 68\npermit tcp any any eq 443\ndeny ip any any log-input",
         check: [["ip access-list extended","corp_acl"],["permit udp","67","68"],["permit tcp","443"],["deny ip any any log-input"]] },
@@ -110,8 +110,8 @@ export const LABS = [
     topology: `Internet ── Gw1 ── Sw1 ── PCs\n               VLAN 10`,
     tasks: [
       { id: 1, text: "Configure local account on Gw1: username wheel, password lock3path, algorithm scrypt, exec privilege. Telnet only on VTY 0-4.", device: "Gw1",
-        hint: "username wheel algorithm-type scrypt secret lock3path\nline vty 0 4\nlogin local\ntransport input telnet",
-        check: [["username","wheel"],["secret","lock3path"],["login local"],["transport input telnet"]] },
+        hint: "username wheel privilege 15 algorithm-type scrypt secret lock3path\nline vty 0 4\nlogin local\ntransport input telnet",
+        check: [["username","wheel","privilege","15","algorithm-type","scrypt"],["secret","lock3path"],["login local"],["transport input telnet"]] },
       { id: 2, text: "Configure NACL CORP_ACL on Gw1: allow BOOTP and HTTPS, deny rest with log-input", device: "Gw1",
         hint: "ip access-list extended CORP_ACL\npermit udp any any range 67 68\npermit tcp any any eq 443\ndeny ip any any log-input",
         check: [["ip access-list extended","corp_acl"],["permit udp","67","68"],["permit tcp","443"],["deny ip any any log-input"]] },
@@ -159,9 +159,9 @@ export const LABS = [
       { id: 2, text: "Configure a default route on R1 to the ISP (via 209.165.200.226 or directly connected)", device: "R1",
         hint: "ip route 0.0.0.0 0.0.0.0 209.165.200.226",
         check: [["ip route","0.0.0.0","0.0.0.0"]] },
-      { id: 3, text: "Configure R2 with a route to the Server at 10.0.41.10/32 via R4 (10.0.24.4)", device: "R2",
+      { id: 3, text: "Configure R2 with a route to the LAN subnet (10.0.41.0/24) via R4 (10.0.24.4)", device: "R2",
         hint: "ip route 10.0.41.0 255.255.255.0 10.0.24.4",
-        check: [["ip route","10.0.41"]] },
+        check: [["ip route","10.0.41.0","255.255.255.0","10.0.24.4"]] },
       { id: 4, text: "Configure R1 with a route to the LAN (10.0.41.0/24) that prefers R3 as primary path", device: "R1",
         hint: "ip route 10.0.41.0 255.255.255.0 10.0.13.3\nip route 10.0.41.0 255.255.255.0 10.0.12.2 2",
         check: [["ip route","10.0.41.0","255.255.255.0"]] }
@@ -299,8 +299,8 @@ export const LABS = [
     topology: `Internet ── R1 ── Sw101 ── Sw103 ── PCs\n               VLAN 101`,
     tasks: [
       { id: 1, text: "Configure local account on Sw103: username devnet, password access8cli, SHA256, exec privilege. Telnet on VTY 0-4.", device: "Sw103",
-        hint: "username devnet algorithm-type sha256 secret access8cli\nline vty 0 4\nlogin local\ntransport input telnet",
-        check: [["username","devnet"],["secret","access8cli"],["login local"],["transport input telnet"]] },
+        hint: "username devnet privilege 15 algorithm-type sha256 secret access8cli\nline vty 0 4\nlogin local\ntransport input telnet",
+        check: [["username","devnet","privilege","15","algorithm-type","sha256"],["secret","access8cli"],["login local"],["transport input telnet"]] },
       { id: 2, text: "Modify NACL INTERNET_ACL on R1: allow HTTPS from 172.16.0.0/16, allow telnet for VLAN 101 only, deny rest with log-input", device: "R1",
         hint: "ip access-list extended INTERNET_ACL\npermit tcp 172.16.0.0 0.0.255.255 any eq 443\npermit tcp <VLAN101-subnet> <wildcard> any eq 23\ndeny ip any any log-input",
         check: [["ip access-list extended","internet_acl"],["permit tcp","172.16","443"],["deny ip any any log-input"]] },
@@ -341,7 +341,7 @@ export const LABS = [
         check: [["ipv6 route","2001:db8:41::/64","2001:db8:12::2"]] },
       { id: 2, text: "Configure floating IPv6 route on R1 to 2001:db8:41::/64 via R3 (higher AD for backup)", device: "R1",
         hint: "ipv6 route 2001:db8:41::/64 2001:db8:13::3 2",
-        check: [["ipv6 route","2001:db8:41::/64","2001:db8:13::3"]] }
+        check: [["ipv6 route","2001:db8:41::/64","2001:db8:13::3","2"]] }
     ]
   },
   {
@@ -429,9 +429,9 @@ export const LABS = [
       { id: 3, text: "Configure R1 as NTP master, R2 as NTP client using R1 IP 10.1.2.1", device: "R1",
         hint: "ntp master\n\n! On R2:\nntp server 10.1.2.1",
         check: [["ntp master"]] },
-      { id: 4, text: "Configure SSH on R3: user root/s3cret, RSA keys, SSH only on VTY lines", device: "R3",
-        hint: "username root secret s3cret\nip domain-name lab.local\ncrypto key generate rsa\n1024\nline vty 0 4\ntransport input ssh\nlogin local",
-        check: [["username","root"],["crypto key generate rsa"],["transport input ssh"],["login local"]] }
+      { id: 4, text: "Configure SSH on R3: user root/s3cret, privilege 15, RSA keys, SSH only on VTY lines", device: "R3",
+        hint: "username root privilege 15 secret s3cret\nip domain-name lab.local\ncrypto key generate rsa\n1024\nline vty 0 4\ntransport input ssh\nlogin local",
+        check: [["username","root","privilege","15"],["secret","s3cret"],["crypto key generate rsa"],["transport input ssh"],["login local"]] }
     ]
   },
   {
@@ -469,8 +469,8 @@ export const LABS = [
     topology: `ISP ── R1 ── Sw2 ── Sw3 ── PCs\n               VLAN 5`,
     tasks: [
       { id: 1, text: "Configure local account on Sw3: username tech12, password load1key, MD5, exec privilege. Telnet on VTY 0-4.", device: "Sw3",
-        hint: "username tech12 algorithm-type md5 secret load1key\nline vty 0 4\nlogin local\ntransport input telnet",
-        check: [["username","tech12"],["secret","load1key"],["login local"],["transport input telnet"]] },
+        hint: "username tech12 privilege 15 algorithm-type md5 secret load1key\nline vty 0 4\nlogin local\ntransport input telnet",
+        check: [["username","tech12","privilege","15","algorithm-type","md5"],["secret","load1key"],["login local"],["transport input telnet"]] },
       { id: 2, text: "Configure NACL ISP_ACL on R1: deny RFC1918 class A (10.0.0.0/8) and class B (172.16.0.0/12), permit all other", device: "R1",
         hint: "ip access-list extended ISP_ACL\ndeny ip 10.0.0.0 0.255.255.255 any\ndeny ip 172.16.0.0 0.15.255.255 any\npermit ip any any",
         check: [["ip access-list extended","isp_acl"],["deny ip","10.0.0.0","0.255.255.255"],["deny ip","172.16.0.0","0.15.255.255"],["permit ip any any"]] },
@@ -585,8 +585,8 @@ export const LABS = [
     topology: `PC1 ── Sw101 ── Sw102(E0/0) ── PC2\n       VLAN 100/200`,
     tasks: [
       { id: 1, text: "Configure local account on Sw101: username support, password max2learn, exec privilege. Telnet on VTY 0-4.", device: "Sw101",
-        hint: "username support secret max2learn\nline vty 0 4\nlogin local\ntransport input telnet",
-        check: [["username","support"],["secret","max2learn"],["login local"],["transport input telnet"]] },
+        hint: "username support privilege 15 secret max2learn\nline vty 0 4\nlogin local\ntransport input telnet",
+        check: [["username","support","privilege","15"],["secret","max2learn"],["login local"],["transport input telnet"]] },
       { id: 2, text: "Configure NACL ENT_ACL on Sw101: deny PC2 ping to PC1, allow PC2 telnet to Sw101, deny other telnet from VLAN200, permit rest", device: "Sw101",
         hint: "ip access-list extended ENT_ACL\ndeny icmp host <PC2-IP> host <PC1-IP>\npermit tcp host <PC2-IP> host <Sw101-IP> eq 23\ndeny tcp any any eq 23\npermit ip any any",
         check: [["ip access-list extended","ent_acl"],["deny icmp"],["permit tcp","eq 23"],["deny tcp","eq 23"],["permit ip any any"]] },
