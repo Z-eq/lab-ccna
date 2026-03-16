@@ -351,7 +351,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
    minimax: {  // ← minimax kommer in här
       name: "MiniMax M2.5",
       icon: "⚡",
-      url: "https://api.minimaxi.chat/v1/text/chatcompletion_v2",
+      url: "https://api.minimax.io/anthropic/v1",
       buildRequest: (prompt, key) => ({
         method: "POST",
         headers: {
@@ -359,7 +359,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
           "Authorization": `Bearer ${key}`,
         },
         body: JSON.stringify({
-          model: "MiniMax-Text-01",
+          model: "MiniMax-M2.5",
           max_tokens: 4096,
           messages: [
             { role: "system", content: AI_SYSTEM_PROMPT },
