@@ -351,7 +351,7 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
    minimax: {  // ← minimax kommer in här
       name: "MiniMax M2.5",
       icon: "⚡",
-      url: "https://api.minimax.io/anthropic/v1",
+      url: "https://api.minimax.com/anthropic/v1",
       buildRequest: (prompt, key) => ({
         method: "POST",
         headers: {
