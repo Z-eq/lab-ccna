@@ -347,8 +347,33 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
         return data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
       },
     },
-  };
-
+    
+   minimax: {  // ← minimax kommer in här
+      name: "MiniMax M2.5",
+      icon: "⚡",
+      url: "https://api.minimaxi.chat/v1/text/chatcompletion_v2",
+      buildRequest: (prompt, key) => ({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          model: "MiniMax-Text-01",
+          max_tokens: 4096,
+          messages: [
+            { role: "system", content: AI_SYSTEM_PROMPT },
+            { role: "user",   content: prompt },
+          ],
+        }),
+      }),
+      extractText: (data) => {
+        if (data.base_resp && data.base_resp.status_code !== 0)
+          throw new Error(data.base_resp.status_msg || "MiniMax API error");
+        return data.choices?.[0]?.message?.content || "";
+      },
+    },
+  }; 
   const aiGenerate = async () => {
     if (!aiApiKey.trim()) { setAiError("Ange API-nyckel först"); return; }
     if (!aiPrompt.trim()) { setAiError("Skriv en prompt"); return; }
