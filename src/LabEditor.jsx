@@ -285,17 +285,17 @@ IMPORTANT: Return ONLY the JSON object. No other text before or after.`;
     claude: {
       name: "Claude (Anthropic)",
       icon: "🟣",
-      url: "https://api.anthropic.com/v1/messages",
+      url: "https://api.minimax.io/anthropic",
       buildRequest: (prompt, key) => ({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": key,
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": "2024-06-01",
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "MiniMax M2.5",
           max_tokens: 4096,
           system: AI_SYSTEM_PROMPT,
           messages: [{ role: "user", content: prompt }],
