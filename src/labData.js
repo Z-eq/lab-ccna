@@ -50,7 +50,7 @@ export const LABS = [
         hint: "ip dhcp excluded-address 10.1.3.1 10.1.3.10\nip dhcp pool NETPOOL\nnetwork 10.1.3.0 255.255.255.0",
         check: [["ip dhcp excluded-address","10.1.3.1","10.1.3.10"],["ip dhcp pool","netpool"],["network","10.1.3.0","255.255.255.0"]] },
       { id: 4, text: "Configure SSH on R3: user netadmin/N3t4ccess, privilege 15, RSA 1024 bits, SSH only on 0 4 VTY lines.", device: "R3",
-        hint: "username netadmin privilege 15 secret N3t4ccess\nip domain-name lab.local\ncrypto key generate rsa\n1024\nline vty 0 4\ntransport input ssh\nlogin local",
+        hint: "username netadmin privilege 15 secret N3t4ccess\nip domain-name lab.local\ncrypto key generate rsa 1024\nline vty 0 4\ntransport input ssh\nlogin local",
         check: [["username","netadmin","privilege","15"],["secret","n3t4ccess"],["crypto key generate rsa"],["transport input ssh"],["login local"]] }
     ]
   },
@@ -430,7 +430,7 @@ export const LABS = [
         hint: "ntp master\n\n! On R2:\nntp server 10.1.2.1",
         check: [["ntp master"]] },
       { id: 4, text: "Configure SSH on R3: user root/s3cret, privilege 15, RSA keys, SSH only on VTY lines", device: "R3",
-        hint: "username root privilege 15 secret s3cret\nip domain-name lab.local\ncrypto key generate rsa\n1024\nline vty 0 4\ntransport input ssh\nlogin local",
+        hint: "username root privilege 15 secret s3cret\nip domain-name lab.local\ncrypto key generate rsa 1024\nline vty 0 4\ntransport input ssh\nlogin local",
         check: [["username","root","privilege","15"],["secret","s3cret"],["crypto key generate rsa"],["transport input ssh"],["login local"]] }
     ]
   },
