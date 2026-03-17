@@ -254,7 +254,7 @@ export default function CiscoLabSimulator() {
 
     // ─── ? inline help ────────────────────────────────────────────────────
     if (cmd.trimEnd().endsWith("?")) {
-      const partial = cmd.slice(0, -1); // strip the ?
+      const partial = cmd.slice(0, -1);
       const { matches } = lookupCmd(partial, currentState.mode);
       const formatted = matches.length > 0
         ? matches.map(m => `  ${m.word.padEnd(30)} ${m.desc}`).join("\n")
@@ -264,7 +264,7 @@ export default function CiscoLabSimulator() {
         { type: "input", text: `${prompt} ${cmd}` },
         { type: "output", text: formatted },
       ]);
-      setCurrentInput(partial); // keep what was typed minus the ?
+      setCurrentInput(partial);
       return;
     }
 
@@ -339,80 +339,68 @@ export default function CiscoLabSimulator() {
       const input = currentInput;
       const mode = currentState?.mode || "user";
 
-      // ─── IOS tab rules: 3 chars on first word, 1 char on subsequent ──────
-      const words = input.trimEnd().split(/\s+/).filter(Boolean);
+      // IOS tab rules: 3 chars on first word, 1 char on subsequent words
+      const inputWords = input.trimEnd().split(/\s+/).filter(Boolean);
       const endsWithSpace = input.endsWith(" ");
-      const currentWord = endsWithSpace ? "" : (words[words.length - 1] || "");
-      const isFirstWord = words.length <= 1 && !endsWithSpace;
-
-      const minChars = isFirstWord ? 3 : 1;
-      if (currentWord.length < minChars) return;
+      const currentWord = endsWithSpace ? "" : (inputWords[inputWords.length - 1] || "");
+      const isFirstWord = inputWords.length <= 1 && !endsWithSpace;
+      if (currentWord.length < (isFirstWord ? 3 : 1)) return;
 
       const { matches, partial } = lookupCmd(input, mode);
+      if (matches.length === 0) return;
 
-      if (matches.length === 0) {
-        // No match — beep (do nothing, like real IOS)
-      } else if (matches.length === 1 && partial !== "" && matches[0].word !== "<cr>" && !matches[0].word.startsWith("<")) {
-        // Exactly one keyword match — complete it
+      // Filter out <cr> and <value> placeholders for completion
+      const keywords = matches.filter(m => !m.word.startsWith("<") && m.word !== "<cr>");
+
+      if (keywords.length === 1 && partial !== "") {
+        // Exactly one keyword — complete it
         const base = input.slice(0, input.length - partial.length);
-        setCurrentInput(base + matches[0].word + " ");
-      } else {
-        // Multiple matches — show like real IOS, complete common prefix of keywords
-        const keywords = matches.filter(m => !m.word.startsWith("<") && m.word !== "<cr>");
-        if (keywords.length === 1 && partial !== "") {
-          const base = input.slice(0, input.length - partial.length);
-          setCurrentInput(base + keywords[0].word + " ");
-          return;
-        }
-
+        setCurrentInput(base + keywords[0].word + " ");
+      } else if (keywords.length > 1 && partial !== "") {
+        // Multiple keywords — show and complete common prefix
         const prompt = getPrompt(currentState);
-        const maxLen = Math.max(0, ...matches.map(m => m.word.length));
-        const colW = Math.min(maxLen + 2, 30);
-        const formatted = matches
-          .map(m => `  ${m.word.padEnd(colW)} ${m.desc}`)
-          .join("\n");
-
+        const maxLen = Math.max(...matches.map(m => m.word.length));
+        const formatted = matches.map(m => `  ${m.word.padEnd(maxLen + 2)} ${m.desc}`).join("\n");
         setTerminalHistory(h => [
           ...h,
           { type: "input", text: `${prompt} ${input}` },
           { type: "output", text: formatted },
         ]);
-
-        // Complete common prefix of keyword matches
-        if (keywords.length > 1 && partial !== "") {
-          const commonPfx = keywords.reduce((pfx, m) => {
-            const s = m.word.toLowerCase();
-            let i = 0;
-            while (i < pfx.length && i < s.length && pfx[i] === s[i]) i++;
-            return pfx.slice(0, i);
-          }, keywords[0].word.toLowerCase());
-          if (commonPfx.length > partial.length) {
-            const base = input.slice(0, input.length - partial.length);
-            setCurrentInput(base + commonPfx);
-          }
+        const commonPfx = keywords.reduce((pfx, m) => {
+          const s = m.word.toLowerCase();
+          let i = 0;
+          while (i < pfx.length && i < s.length && pfx[i] === s[i]) i++;
+          return pfx.slice(0, i);
+        }, keywords[0].word.toLowerCase());
+        if (commonPfx.length > partial.length) {
+          const base = input.slice(0, input.length - partial.length);
+          setCurrentInput(base + commonPfx);
         }
+      } else if (endsWithSpace && matches.length > 0) {
+        // Show all options after a space
+        const prompt = getPrompt(currentState);
+        const maxLen = Math.max(...matches.map(m => m.word.length));
+        const formatted = matches.map(m => `  ${m.word.padEnd(maxLen + 2)} ${m.desc}`).join("\n");
+        setTerminalHistory(h => [
+          ...h,
+          { type: "input", text: `${prompt} ${input}` },
+          { type: "output", text: formatted },
+        ]);
       }
     }
   }, [handleCommand, cmdHistoryIdx, currentState, currentInput]);
 
-  // ─── Progressive hint helpers ────────────────────────────────────────────
-  // Level 1: command families extracted from check keywords
+  // ─── Progressive hint helpers ─────────────────────────────────────────────
   const getHintLevel1 = (task) => {
     if (!task.check || task.check.length === 0) return "No hint available.";
-    const families = task.check.map(keywords => {
-      // First keyword is usually the command family
-      return `• ${keywords[0]}`;
-    });
-    return `💡 Commands needed:\n${families.join("\n")}`;
+    return `💡 Commands needed:\n${task.check.map(kws => `• ${kws[0]}`).join("\n")}`;
   };
 
-  // Level 2: first line of hint with values after 2nd word masked
   const getHintLevel2 = (task) => {
     if (!task.hint) return "No hint available.";
     const lines = task.hint.split("\n").filter(l => l.trim() && !l.trim().startsWith("!") && !l.trim().startsWith("On "));
     const firstLine = lines[0] || "";
     const words = firstLine.trim().split(/\s+/);
-    // Keep first 2 words (command), mask the rest with ???
     const masked = words.length > 2
       ? words.slice(0, 2).join(" ") + " " + words.slice(2).map(() => "???").join(" ")
       : firstLine;
@@ -421,11 +409,12 @@ export default function CiscoLabSimulator() {
 
   const cycleHint = (key) => {
     setHintLevel(prev => {
-      const current = prev[key] || 0;
-      const next = current >= 2 ? 0 : current + 1;
-      return { ...prev, [key]: next };
+      const cur = prev[key] || 0;
+      return { ...prev, [key]: cur >= 2 ? 0 : cur + 1 };
     });
   };
+
+  const toggleTaskComplete = (labId, taskId) => {
     setCompletedTasks(prev => { const key = `${labId}-${taskId}`; return { ...prev, [key]: !prev[key] }; });
   };
 
@@ -610,20 +599,7 @@ export default function CiscoLabSimulator() {
             <span style={{ fontSize: 11, color: T.textDim }}>
               © {new Date().getFullYear()} Z-eq — All rights reserved
             </span>
-            <a
-              href="https://github.com/Z-eq/"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.textMuted, textDecoration: "none", transition: "color 0.2s" }}
-              onMouseEnter={e => e.currentTarget.style.color = T.accent}
-              onMouseLeave={e => e.currentTarget.style.color = T.textMuted}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12"/>
-              </svg>
-              github.com/Z-eq
-            </a>
-          </div>
+           </div>
         </div>
       </div>
     );
@@ -785,7 +761,6 @@ export default function CiscoLabSimulator() {
                         style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, border: `1px solid ${T.border}`, background: T.bg, color: T.switchText, cursor: "pointer", fontFamily: "inherit" }}>
                         Open {task.device}
                       </button>
-                      {/* Progressive hint button — visible to all */}
                       <button onClick={() => cycleHint(key)}
                         style={{
                           fontSize: 10, padding: "3px 8px", borderRadius: 4,
@@ -805,7 +780,6 @@ export default function CiscoLabSimulator() {
                       </button>
                       )}
                     </div>
-                    {/* Progressive hint display */}
                     {(hintLevel[key] || 0) > 0 && (
                       <div style={{ padding: "8px 12px", background: T.accentAlt + "10", borderTop: `1px solid ${T.accentAlt}30` }}>
                         <pre style={{ margin: 0, fontSize: 11, color: T.accentAlt, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
@@ -813,7 +787,6 @@ export default function CiscoLabSimulator() {
                         </pre>
                       </div>
                     )}
-                    {/* Full solution — admin only */}
                     {hintVisible && (
                       <div style={{ padding: "8px 12px", background: T.hintBg, borderTop: `1px solid ${T.border}` }}>
                         <pre style={{ margin: 0, fontSize: 11, color: T.routerText, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{task.hint}</pre>
