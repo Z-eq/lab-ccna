@@ -4,7 +4,7 @@ import CiscoLabSimulator from './CiscoLabSimulator'
 import LabEditor from './LabEditor'
 
 // ─── Admin gate ───────────────────────────────────────────────────────────────
-const ADMIN_KEY = "secret123";
+const ADMIN_KEY = "123";
 const ADMIN_SESSION_KEY = "ccna_admin";
 
 (function handleAdminRoute() {
