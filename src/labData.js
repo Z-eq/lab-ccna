@@ -19,7 +19,7 @@ export const LABS = [
       { id: 1, text: "Configure a static route on R2 to reach the LAN subnet (192.168.0.0/24) via SW1 (10.10.31.1). SW1 is an L3 switch acting as the default gateway for the LAN and is directly connected to R2 via the 10.10.31.0/24 segment.", device: "R2",
         hint: "ip route 192.168.0.0 255.255.255.0 10.10.31.1",
         check: [["ip route","192.168.0.0","255.255.255.0","10.10.31.1"]] },
-      { id: 2, text: "Configure default reachability to the Internet subnet (172.20.20.128/25) in router R1", device: "R1",
+      { id: 2, text: "Configure default reachability to the Internet subnet in router R1", device: "R1",
         hint: "ip route 0.0.0.0 0.0.0.0 10.10.13.3",
         check: [["ip route","0.0.0.0","0.0.0.0","10.10.13.3"]] },
       { id: 3, text: "Configure a single static route in R2 to reach the Internet subnet (172.20.20.128/25) via both redundant links (ECMP). No default route allowed.", device: "R2",
