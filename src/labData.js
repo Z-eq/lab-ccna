@@ -162,9 +162,9 @@ export const LABS = [
       { id: 3, text: "Configure R2 with a route to the LAN subnet (10.0.41.0/24) via R4 (10.0.24.4)", device: "R2",
         hint: "ip route 10.0.41.0 255.255.255.0 10.0.24.4",
         check: [["ip route","10.0.41.0","255.255.255.0","10.0.24.4"]] },
-      { id: 4, text: "Configure R1 with a route to the LAN (10.0.41.0/24) that prefers R3 as primary path", device: "R1",
+      { id: 4, text: "Configure R1 with a route to the LAN (10.0.41.0/24) that prefers R3 as primary path and R2 as floating backup (AD 2)", device: "R1",
         hint: "ip route 10.0.41.0 255.255.255.0 10.0.13.3\nip route 10.0.41.0 255.255.255.0 10.0.12.2 2",
-        check: [["ip route","10.0.41.0","255.255.255.0"]] }
+        check: [["ip route","10.0.41.0","255.255.255.0","10.0.13.3"],["ip route","10.0.41.0","255.255.255.0","10.0.12.2","2"]] }
     ]
   },
   {
@@ -377,14 +377,14 @@ export const LABS = [
       { name: "Sw1", type: "switch", hostname: "Sw1", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" }, "Ethernet0/3": { status: "up" } } },
       { name: "Sw2", type: "switch", hostname: "Sw2", interfaces: { "Ethernet0/0": { status: "up" }, "Ethernet0/1": { status: "up" }, "Ethernet0/2": { status: "up" }, "Ethernet0/3": { status: "up" } } }
     ],
-    topology: `Sw1(E0/0)──(E0/0)Sw2\n │E0/1,E0/2,E0/3      │E0/1,E0/2,E0/3\n Phone+PCs             Phone+PCs\n Data VLAN + Voice VLAN`,
+    topology: `Sw1(E0/0)──(E0/0)Sw2\n │E0/1,E0/2,E0/3      │E0/1,E0/2,E0/3\n Phone+PCs             Phone+PCs\n Data VLAN 10 (DATA)   Voice VLAN 20 (VOICE)`,
     tasks: [
-      { id: 1, text: "Configure both VLANs on Sw1 and Sw2 with names from topology", device: "Sw1",
-        hint: "vlan <data-vlan-id>\nname <data-name>\nvlan <voice-vlan-id>\nname <voice-name>",
-        check: [["vlan"],["name"]] },
+      { id: 1, text: "Configure VLAN 10 named DATA and VLAN 20 named VOICE on both Sw1 and Sw2", device: "Sw1",
+        hint: "vlan 10\nname DATA\nvlan 20\nname VOICE",
+        check: [["vlan","10"],["name","data"],["vlan","20"],["name","voice"]] },
       { id: 2, text: "Configure E0/1, E0/2, E0/3 on both switches for data + voice (IP phones and PCs)", device: "Sw1",
-        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan <data>\nswitchport voice vlan <voice>\ninterface Ethernet0/2\nswitchport mode access\nswitchport access vlan <data>\nswitchport voice vlan <voice>\ninterface Ethernet0/3\nswitchport mode access\nswitchport access vlan <data>\nswitchport voice vlan <voice>",
-        check: [["switchport mode access"],["switchport access vlan"],["switchport voice vlan"]] },
+        hint: "interface Ethernet0/1\nswitchport mode access\nswitchport access vlan 10\nswitchport voice vlan 20\ninterface Ethernet0/2\nswitchport mode access\nswitchport access vlan 10\nswitchport voice vlan 20\ninterface Ethernet0/3\nswitchport mode access\nswitchport access vlan 10\nswitchport voice vlan 20",
+        check: [["switchport mode access"],["switchport access vlan","10"],["switchport voice vlan","20"]] },
       { id: 3, text: "Enable LLDP (vendor-neutral) on E0/0 of both Sw1 and Sw2", device: "Sw1",
         hint: "interface Ethernet0/0\nlldp transmit\nlldp receive\n\n! or globally: lldp run",
         check: [["lldp"]] }
@@ -471,9 +471,9 @@ export const LABS = [
       { id: 1, text: "Configure local account on Sw3: username tech12, password load1key, MD5, exec privilege. Telnet on VTY 0-4.", device: "Sw3",
         hint: "username tech12 privilege 15 algorithm-type md5 secret load1key\nline vty 0 4\nlogin local\ntransport input telnet",
         check: [["username","tech12","privilege","15","algorithm-type","md5"],["secret","load1key"],["login local"],["transport input telnet"]] },
-      { id: 2, text: "Configure NACL ISP_ACL on R1: deny RFC1918 class A (10.0.0.0/8) and class B (172.16.0.0/12), permit all other", device: "R1",
-        hint: "ip access-list extended ISP_ACL\ndeny ip 10.0.0.0 0.255.255.255 any\ndeny ip 172.16.0.0 0.15.255.255 any\npermit ip any any",
-        check: [["ip access-list extended","isp_acl"],["deny ip","10.0.0.0","0.255.255.255"],["deny ip","172.16.0.0","0.15.255.255"],["permit ip any any"]] },
+      { id: 2, text: "Configure NACL ISP_ACL on R1: deny RFC1918 class A (10.0.0.0/8) and class B (172.16.0.0/12), permit all other. Apply inbound on E0/0.", device: "R1",
+        hint: "ip access-list extended ISP_ACL\ndeny ip 10.0.0.0 0.255.255.255 any\ndeny ip 172.16.0.0 0.15.255.255 any\npermit ip any any\ninterface Ethernet0/0\nip access-group ISP_ACL in",
+        check: [["ip access-list extended","isp_acl"],["deny ip","10.0.0.0","0.255.255.255"],["deny ip","172.16.0.0","0.15.255.255"],["permit ip any any"],["ip access-group","isp_acl","in"]] },
       { id: 3, text: "Configure DAI on Sw2: VLAN 5, validate dst-mac, src-mac, and IP", device: "Sw2",
         hint: "ip arp inspection vlan 5\nip arp inspection validate dst-mac src-mac ip",
         check: [["ip arp inspection vlan","5"],["ip arp inspection validate"]] }
@@ -603,7 +603,7 @@ export const LABS = [
 
 export const LAB_DESCRIPTIONS = {
   1: `IP connectivity and OSPF are preconfigured on all devices where necessary. Do not make any changes to the IP addressing or OSPF. The company policy uses connected interfaces and next hops when configuring static routes except for load balancing or redundancy without floating static. Connectivity must be established between subnet 172.20.20.128/25 on the Internet and the LAN at 192.168.0.0/24 connected to SW1:
-1. Configure reachability to the switch SW1 LAN subnet in router R2.
+1. Configure a static route on R2 to reach the LAN subnet (192.168.0.0/24) via SW1 (10.10.31.1). SW1 is an L3 switch acting as the default gateway for the LAN, directly connected to R2 via 10.10.31.0/24.
 2. Configure default reachability to the Internet subnet in router R1.
 3. Configure a single static route in router R2 to reach to the Internet subnet considering both redundant links between routers R1 and R2. A default route is NOT allowed in router R2.
 4. Configure a static route in router R1 toward the switch SW1 LAN subnet where the primary link must be through Ethernet0/1, and the backup link must be through Ethernet0/2 using a floating route. Use the minimal administrative distance value when required.`,
