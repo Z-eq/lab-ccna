@@ -597,254 +597,250 @@ export const LABS = [
   }
 ];
 
-
-
-
-
 export const LAB_DESCRIPTIONS = {
   1: `IP connectivity and OSPF are preconfigured on all devices where necessary. Do not make any changes to the IP addressing or OSPF. The company policy uses connected interfaces and next hops when configuring static routes except for load balancing or redundancy without floating static. Connectivity must be established between subnet 172.20.20.128/25 on the Internet and the LAN at 192.168.0.0/24 connected to SW1:
 
-1. Configure a static route on R2 to reach the LAN subnet (192.168.0.0/24) via SW1 (10.10.31.1). SW1 is an L3 switch acting as the default gateway for the LAN, directly connected to R2 via 10.10.31.0/24.
+**1.** Configure a static route on R2 to reach the LAN subnet (192.168.0.0/24) via SW1 (10.10.31.1). SW1 is an L3 switch acting as the default gateway for the LAN, directly connected to R2 via 10.10.31.0/24.
 
-2. Configure default reachability to the Internet subnet in router R1.
+**2.** Configure default reachability to the Internet subnet in router R1.
 
-3. Configure a single static route in router R2 to reach to the Internet subnet considering both redundant links between routers R1 and R2. A default route is NOT allowed in router R2.
+**3.** Configure a single static route in router R2 to reach to the Internet subnet considering both redundant links between routers R1 and R2. A default route is NOT allowed in router R2.
 
-4. Configure a static route in router R1 toward the switch SW1 LAN subnet where the primary link must be through Ethernet0/1, and the backup link must be through Ethernet0/2 using a floating route. Use the minimal administrative distance value when required.`,
+**4.** Configure a static route in router R1 toward the switch SW1 LAN subnet where the primary link must be through Ethernet0/1, and the backup link must be through Ethernet0/2 using a floating route. Use the minimal administrative distance value when required.`,
 
   2: `Connectivity between three routers has been established, and IP services must be configured in the order presented to complete the implementation. Tasks assigned include configuration of NAT, NTP, DHCP, and SSH services.
 
-1. All traffic sent from R3 to the R1 Loopback address must be configured for NAT on R2. All source addresses must be translated from R3 to the IP address of Ethernet0/0 on R2, while using only a standard access list named PUBNET. Do not use NVI NAT configuration.
+**1.** All traffic sent from R3 to the R1 Loopback address must be configured for NAT on R2. All source addresses must be translated from R3 to the IP address of Ethernet0/0 on R2, while using only a standard access list named PUBNET. Do not use NVI NAT configuration.
 
-2. Configure R1 as an NTP server and R2 as a client, not as a peer, using the IP address of the R1 Ethernet0/2 interface. Set the clock on the NTP server for midnight on May 1, 2018.
+**2.** Configure R1 as an NTP server and R2 as a client, not as a peer, using the IP address of the R1 Ethernet0/2 interface. Set the clock on the NTP server for midnight on May 1, 2018.
 
-3. Configure R1 as a DHCP server for the network 10.1.3.0/24 in a pool named NETPOOL. Using a single command, exclude addresses 1 - 10 from the range. Interface Ethernet0/2 on R3 must be issued the IP address of 10.1.3.11 via DHCP.
+**3.** Configure R1 as a DHCP server for the network 10.1.3.0/24 in a pool named NETPOOL. Using a single command, exclude addresses 1 - 10 from the range. Interface Ethernet0/2 on R3 must be issued the IP address of 10.1.3.11 via DHCP.
 
-4. Configure SSH connectivity from R1 to R3, while excluding access via other remote connection protocols. Access for user netadmin and password N3t4ccess must be set on router R3 using RSA and 1024 bits. Verify connectivity using an SSH session from router R1 using a destination address of 10.1.3.11. Do NOT modify console.`,
+**4.** Configure SSH connectivity from R1 to R3, while excluding access via other remote connection protocols. Access for user netadmin and password N3t4ccess must be set on router R3 using RSA and 1024 bits. Verify connectivity using an SSH session from router R1 using a destination address of 10.1.3.11. Do NOT modify console.`,
 
   3: `All physical cabling between the two switches is installed. Configure the network connectivity between the switches using the designated VLANs and interfaces.
 
-1. Configure VLAN 12 named Compute and VLAN 34 named Telephony where required for each task.
+**1.** Configure VLAN 12 named Compute and VLAN 34 named Telephony where required for each task.
 
-2. Configure Ethernet0/1 on SW2 to use the existing VLAN named Available.
+**2.** Configure Ethernet0/1 on SW2 to use the existing VLAN named Available.
 
-3. Configure the connection between the switches using access ports.
+**3.** Configure the connection between the switches using access ports.
 
-4. Configure Ethernet0/1 on SW1 using data and voice VLANs.
+**4.** Configure Ethernet0/1 on SW1 using data and voice VLANs.
 
-5. Configure Ethernet0/1 on SW2 so that the Cisco proprietary neighbor discovery protocol is turned off for the designated interface only.`,
+**5.** Configure Ethernet0/1 on SW2 so that the Cisco proprietary neighbor discovery protocol is turned off for the designated interface only.`,
 
   4: `Refer to the topology. All physical cabling is in place. Configure local users accounts, modify the Named ACL (NACL), and configure DHCP Snooping. The current contents of the NACL must remain intact.
 
-Task 1: Configure a local account on Gw1 with telnet access only on virtual ports 0-4. Use the following information: • Username: wheel • Password: lock3path • Algorithm type: Scrypt • Privilege level: Exec mode
+**Task 1:** Configure a local account on Gw1 with telnet access only on virtual ports 0-4. Use the following information: • Username: wheel • Password: lock3path • Algorithm type: Scrypt • Privilege level: Exec mode
 
-Task 2: Configure and apply a NACL on Gw1 to control network traffic from VLAN 10: • Name: CORP_ACL • Allow BOOTP and HTTPS • Restrict all other traffic and log the ingress interface, source MAC address, the packet’s source and destination IP addresses, and ports
+**Task 2:** Configure and apply a NACL on Gw1 to control network traffic from VLAN 10: • Name: CORP_ACL • Allow BOOTP and HTTPS • Restrict all other traffic and log the ingress interface, source MAC address, the packet’s source and destination IP addresses, and ports
 
-Task 3: Configure Sw1: • Enable DNCP Snooping for VLAN 10 • Disable DHCP Option-82 data insertion • Enable DHCP Snooping MAC address verification • Enable trusted interfaces`,
+**Task 3:** Configure Sw1: • Enable DNCP Snooping for VLAN 10 • Disable DHCP Option-82 data insertion • Enable DHCP Snooping MAC address verification • Enable trusted interfaces`,
 
   5: `Refer to the topology. All physical cabling is in place. Configure local users accounts, modify the Named ACL (NACL), and configure DHCP Snooping. The current contents of the NACL must remain intact.
 
-Task 1: Configure a local account on Gw1 with telnet access only on virtual ports 0-4. Use the following information: • Username: wheel • Password: lock3path • Algorithm type: Scrypt • Privilege level: Exec mode
+**Task 1:** Configure a local account on Gw1 with telnet access only on virtual ports 0-4. Use the following information: • Username: wheel • Password: lock3path • Algorithm type: Scrypt • Privilege level: Exec mode
 
-Task 2: Configure and apply a NACL on Gw1 to control network traffic from VLAN 10: • Name: CORP_ACL • Allow BOOTP and HTTPS • Restrict all other traffic and log the ingress interface, source MAC address, the packet’s source and destination IP addresses, and ports
+**Task 2:** Configure and apply a NACL on Gw1 to control network traffic from VLAN 10: • Name: CORP_ACL • Allow BOOTP and HTTPS • Restrict all other traffic and log the ingress interface, source MAC address, the packet’s source and destination IP addresses, and ports
 
-Task 3: Configure Sw1: • Enable DNCP Snooping for VLAN 10 • Disable DHCP Option-82 data insertion • Enable DHCP Snooping MAC address verification • Enable trusted interfaces`,
+**Task 3:** Configure Sw1: • Enable DNCP Snooping for VLAN 10 • Disable DHCP Option-82 data insertion • Enable DHCP Snooping MAC address verification • Enable trusted interfaces`,
 
   6: `IP connectivity between the three routers is configured. OSPF adjacencies must be established.
 
-1. Configure R1 and R2 Router IDs using the interface IP addresses from the link that is shared between them.
+**1.** Configure R1 and R2 Router IDs using the interface IP addresses from the link that is shared between them.
 
-2. Configure the R2 links with a max value facing R1 and R3. R2 must become the DR. R1 and R3 links facing R2 must remain with the default OSPF configuration for DR election. Verify the configuration after clearing the OSPF process.
+**2.** Configure the R2 links with a max value facing R1 and R3. R2 must become the DR. R1 and R3 links facing R2 must remain with the default OSPF configuration for DR election. Verify the configuration after clearing the OSPF process.
 
-3. Using a host wildcard mask, configure all three routers to advertise their respective Loopback1 networks.
+**3.** Using a host wildcard mask, configure all three routers to advertise their respective Loopback1 networks.
 
-4. Configure the link between R1 and R3 to disable their ability to add other OSPF routers.`,
+**4.** Configure the link between R1 and R3 to disable their ability to add other OSPF routers.`,
 
   7: `Refer to the topology. All physical cabling is in place. Routers R3 and R4 are fully configured and inaccessible. Configure static routes for various connectivity to the ISP and the LAN, which resides on R4.
 
-1. Configure a default route on R2 to the ISP
+**1.** Configure a default route on R2 to the ISP
 
-2. Configure a default route on R1 to the ISP
+**2.** Configure a default route on R1 to the ISP
 
-3. Configure R2 with a route to the Server at 10.0.41.10
+**3.** Configure R2 with a route to the Server at 10.0.41.10
 
-4. Configure R1 with a route to the LAN that prefers R3 as the primary path to the LAN`,
+**4.** Configure R1 with a route to the LAN that prefers R3 as the primary path to the LAN`,
 
   8: `R1 and R2 are pre-configured with all the necessary commands. All physical cabling is in place and verified. Connectivity for PC1 and PC2 must be established to the switches; each port must only allow one VLAN and be operational.
 
-1. Configure SW-1 with VLAN 15 and label it exactly as OPS
+**1.** Configure SW-1 with VLAN 15 and label it exactly as OPS
 
-2. Configure SW-2 with VLAN 66 and label it exactly as ENGINEERING
+**2.** Configure SW-2 with VLAN 66 and label it exactly as ENGINEERING
 
-3. Configure the switch port connecting to PC1
+**3.** Configure the switch port connecting to PC1
 
-4. Configure the switch port connecting to PC2
+**4.** Configure the switch port connecting to PC2
 
-5. Configure the E0/2 connections on SW-1 and SW-2 for neighbor discovery using the vendor-neutral standard protocol and ensure that E0/0 on both switches uses the Cisco proprietary protocol`,
+**5.** Configure the E0/2 connections on SW-1 and SW-2 for neighbor discovery using the vendor-neutral standard protocol and ensure that E0/0 on both switches uses the Cisco proprietary protocol`,
 
   9: `R1 has been pre-configured with all the necessary commands. All physical cabling is in place and verified. Connectivity for PC1 and PC2 must be established to the switches, and each port must only allow one VLAN.
 
-1. Configure SW-1 with VLAN 35 and label it exactly as SALES
+**1.** Configure SW-1 with VLAN 35 and label it exactly as SALES
 
-2. Configure SW-2 with VLAN 39 and label it exactly as MARKETING
+**2.** Configure SW-2 with VLAN 39 and label it exactly as MARKETING
 
-3. Configure the switch port connecting to PC1
+**3.** Configure the switch port connecting to PC1
 
-4. Configure the switch port connecting to PC2
+**4.** Configure the switch port connecting to PC2
 
-5. Configure SW-1 and SW-2 for universal neighbor discovery using the industry standard protocol and disable it on the interface connecting to PC1`,
+**5.** Configure SW-1 and SW-2 for universal neighbor discovery using the industry standard protocol and disable it on the interface connecting to PC1`,
 
   10: `VLANS 35 and 45 have been configured in all three switches. All physical connectivity has been installed and verified All inter-switch links must be operational.
 
-1. Configure SW-1 and SW-2 switch ports e0/0 and e0/1 for 802.1q trunking allowing all VLANS
+**1.** Configure SW-1 and SW-2 switch ports e0/0 and e0/1 for 802.1q trunking allowing all VLANS
 
-2. Configure the inter-switch links on SW-1 e0/2, SW-2 e0/2, and SW-3 e0/0 and e0/1 to use native VLAN 35
+**2.** Configure the inter-switch links on SW-1 e0/2, SW-2 e0/2, and SW-3 e0/0 and e0/1 to use native VLAN 35
 
-3. Configure SW-1 and SW-2 switch ports e0/0 and e0/1 for link aggregation SW-1 should immediately negotiate LACP and SW-2 must only respond to LACP requests`,
+**3.** Configure SW-1 and SW-2 switch ports e0/0 and e0/1 for link aggregation SW-1 should immediately negotiate LACP and SW-2 must only respond to LACP requests`,
 
   11: `All physical cabling is in place and verified. Switch SW-1 is pre-configured and inaccessible. SW-2 and SW-3 ports must be configured and operational to complete the configuration.
 
-1. Configure SW-2 and SW-3 ports E0/0 to use the industry standard encapsulation method for trunking and only tag VLAN 10
+**1.** Configure SW-2 and SW-3 ports E0/0 to use the industry standard encapsulation method for trunking and only tag VLAN 10
 
-2. Configure SW-2 and SW-3 ports E0/0 to send and receive untagged traffic over VLAN 11
+**2.** Configure SW-2 and SW-3 ports E0/0 to send and receive untagged traffic over VLAN 11
 
-3. Configure SW-2 and SW-3 ports E0/2 and E0/3 to use the industry standard encapsulation method for trunking and tag all VLANS
+**3.** Configure SW-2 and SW-3 ports E0/2 and E0/3 to use the industry standard encapsulation method for trunking and tag all VLANS
 
-4. Configure SW-2 and SW-3 ports E0/2 and E0/3 for link aggregation using the industry standard protocol with the following requirements: o SW-2 ports must not initiate the negotiation for the aggregation protocol o SW-3 ports must immediately negotiate the aggregation protocol o Use the designated number assignment`,
+**4.** Configure SW-2 and SW-3 ports E0/2 and E0/3 for link aggregation using the industry standard protocol with the following requirements: o SW-2 ports must not initiate the negotiation for the aggregation protocol o SW-3 ports must immediately negotiate the aggregation protocol o Use the designated number assignment`,
 
   12: `All physical cabling is in place and verified. Router R1 is configured and passing traffic for VLANs 5 and 6. All relevant ports are pre-configured as 802.1q trunks.
 
-1. Configure SW-1 port E0/0 to permit only VLANS 5 and 6
+**1.** Configure SW-1 port E0/0 to permit only VLANS 5 and 6
 
-2. Configure both SW-1 and SW-2's E0/1 ports to send and receive untagged traffic over VLAN 77
+**2.** Configure both SW-1 and SW-2's E0/1 ports to send and receive untagged traffic over VLAN 77
 
-3. Configure SW-2 E0/2 port to permit only VLAN 6
+**3.** Configure SW-2 E0/2 port to permit only VLAN 6
 
-4. Configure both SW-3 and SW-4 ports e0/0 and e0/1 for link aggregation using the industry standard protocol with the following requirements: o SW-3 ports must immediately negotiate the aggregation protocol o SW-4 ports must not initiate the negotiation for the aggregation protocol o Use the designated number assignment`,
+**4.** Configure both SW-3 and SW-4 ports e0/0 and e0/1 for link aggregation using the industry standard protocol with the following requirements: o SW-3 ports must immediately negotiate the aggregation protocol o SW-4 ports must not initiate the negotiation for the aggregation protocol o Use the designated number assignment`,
 
   13: `Refer to the topology. All physical cabling is in place. Configure local users accounts, modify the Named ACL (NACL), and configure DHCP Snooping. The current contents of the NACL must remain intact.
 
-1. Configure a local account on Sw103 with telnet access only on virtual ports 0-4. Use the following information: • Username: devnet • Password: access8cli • Algorithm type: SHA256 • Privilege level: Exec mode
+**1.** Configure a local account on Sw103 with telnet access only on virtual ports 0-4. Use the following information: • Username: devnet • Password: access8cli • Algorithm type: SHA256 • Privilege level: Exec mode
 
-2. Using the minimum number of ACEs, modify the existing NACL "INTERNET_ACL" to control network traffic destined for the Internet, and apply the ACL on R1: • Allow HTTPS from 172.16.0.0/16 • Allow Telnet only for VLAN 101 • Restrict all other traffic and log the ingress interface, source MAC address, the packet's source and destination IP addresses, and ports
+**2.** Using the minimum number of ACEs, modify the existing NACL "INTERNET_ACL" to control network traffic destined for the Internet, and apply the ACL on R1: • Allow HTTPS from 172.16.0.0/16 • Allow Telnet only for VLAN 101 • Restrict all other traffic and log the ingress interface, source MAC address, the packet's source and destination IP addresses, and ports
 
-3. Configure Sw101: • Enable DHCP Snooping for VLAN 101 • Disable DHCP Option-82 data insertion • Enable DHCP Snooping MAC address verification`,
+**3.** Configure Sw101: • Enable DHCP Snooping for VLAN 101 • Disable DHCP Option-82 data insertion • Enable DHCP Snooping MAC address verification`,
 
   14: `All physical cabling is in place. A company plans to deploy 64 new sites. The sites will utilize both IPv4 and IPv6 networks.
 
-1. Subnet 10.30.64.0/19 to meet the subnet requirements and maximize the number of hosts • Using the second subnet - Assign the first usable IP address to e0/0 on Sw101 - Assign the last usable IP address to e0/0 on Sw102
+**1.** Subnet 10.30.64.0/19 to meet the subnet requirements and maximize the number of hosts • Using the second subnet - Assign the first usable IP address to e0/0 on Sw101 - Assign the last usable IP address to e0/0 on Sw102
 
-2. Subnet 2001:db8::/56 to meet the subnet requirements and maximize the number of hosts • Using the second subnet - Assign an IPv6 GUA using a unique 64-Bit interface identifier on e0/0 on Sw101 - Assign an IPv6 GUA using a unique 64-Bit interface identifier on e0/0 on Sw102`,
+**2.** Subnet 2001:db8::/56 to meet the subnet requirements and maximize the number of hosts • Using the second subnet - Assign an IPv6 GUA using a unique 64-Bit interface identifier on e0/0 on Sw101 - Assign an IPv6 GUA using a unique 64-Bit interface identifier on e0/0 on Sw102`,
 
   15: `All physical cabling is in place. Configurations should ensure that connectivity is established end-to-end.
 
-1. Configure a route on R1 to ensure that R1 prefers R2 to reach the 2001:db8:41::/64 network
+**1.** Configure a route on R1 to ensure that R1 prefers R2 to reach the 2001:db8:41::/64 network
 
-2. Configure a floating route on R1, and ensure that R1 uses R3 to reach the 2001 :db8:41::/64 network if the connection between R1 and R2 is down
+**2.** Configure a floating route on R1, and ensure that R1 uses R3 to reach the 2001 :db8:41::/64 network if the connection between R1 and R2 is down
 
-3. Ping and traceroute should be working`,
+**3.** Ping and traceroute should be working`,
 
   16: `R1 has been pre-configured with all the necessary commands. All physical cabling is in place and verified. Connectivity to the end devices must be configured.
 
-1. Configure SW-1 switch port 0/1 to carry traffic for the Cisco IP phone and PC
+**1.** Configure SW-1 switch port 0/1 to carry traffic for the Cisco IP phone and PC
 
-2. Configure SW-2 E0/1 to carry traffic for PC2
+**2.** Configure SW-2 E0/1 to carry traffic for PC2
 
-3. Configure VLAN 10 with the name “Engineering” on SW-1
+**3.** Configure VLAN 10 with the name “Engineering” on SW-1
 
-4. Configure the link between SW-1 and SW-2 to use the vendor neutral neighbor discovery protocol
+**4.** Configure the link between SW-1 and SW-2 to use the vendor neutral neighbor discovery protocol
 
-5. Configure the link on SW-1 to R1 so that it does not allow the Cisco neighbor discovery protocol to pass`,
+**5.** Configure the link on SW-1 to R1 so that it does not allow the Cisco neighbor discovery protocol to pass`,
 
   17: `All physical cabling is in place and verified. Connectivity for the Switches on ports E0/1, E0/2, and E0/3 must be configured and available for voice and data capabilities.
 
-1. Configure Sw1 and Sw2 with both VLANS, naming them according to the VLAN Name provided in the topology.
+**1.** Configure Sw1 and Sw2 with both VLANS, naming them according to the VLAN Name provided in the topology.
 
-2. Configure the E0/1, E0/2, and E0/3 ports on both switches for both VLANS and ensure that Cisco IP phones and PCs pass traffic.
+**2.** Configure the E0/1, E0/2, and E0/3 ports on both switches for both VLANS and ensure that Cisco IP phones and PCs pass traffic.
 
-3. Configure Sw1 and Sw2 to allow neighbor discovery via the vendor-neutral protocol on e0/0.`,
+**3.** Configure Sw1 and Sw2 to allow neighbor discovery via the vendor-neutral protocol on e0/0.`,
 
   18: `SW-3 and SW-4 are preconfigured with all necessary commands. All physical cabling is in place and verified. All connectivity must be operational.
 
-1. Configure both SW-1 and SW-2 switch ports e0/0 and e0/1 for 802.1q trunking with only VLANS 1, 12, and 22 permitted.
+**1.** Configure both SW-1 and SW-2 switch ports e0/0 and e0/1 for 802.1q trunking with only VLANS 1, 12, and 22 permitted.
 
-2. Configure SW-1 port e0/2 for 802.1q trunking and include only VLANS 12 and 22.
+**2.** Configure SW-1 port e0/2 for 802.1q trunking and include only VLANS 12 and 22.
 
-3. Configure both SW-1 and SW-2 switch ports e0/0 and e0/1 for link aggregation using the industry standard protocol. All ports must be configured so that they immediately negotiate the link.`,
+**3.** Configure both SW-1 and SW-2 switch ports e0/0 and e0/1 for link aggregation using the industry standard protocol. All ports must be configured so that they immediately negotiate the link.`,
 
   19: `IP connectivity between the three routers is established. IP Services must be configured in the order presented to complete the implementation.
 
-1. Configure dynamic one-to-one address mapping on R2 using a standard list named XLATE, which allows all traffic to translate the source address of R3 to a pool named test_pool using the 10.10.10.0/24 network for traffic sent from R3 to R1. Avoid using an NVI configuration. Verify reachability by sending a ping to 192.168.100.1 from R3.
+**1.** Configure dynamic one-to-one address mapping on R2 using a standard list named XLATE, which allows all traffic to translate the source address of R3 to a pool named test_pool using the 10.10.10.0/24 network for traffic sent from R3 to R1. Avoid using an NVI configuration. Verify reachability by sending a ping to 192.168.100.1 from R3.
 
-2. Configure R3 to dynamically receive an IP address on Ethernet0/2 from the DHCP server.
+**2.** Configure R3 to dynamically receive an IP address on Ethernet0/2 from the DHCP server.
 
-3. Configure R1 as an NTP server and R2 as a client, not as a peer, using the IP address 10.1.2.1.
+**3.** Configure R1 as an NTP server and R2 as a client, not as a peer, using the IP address 10.1.2.1.
 
-4. Configure SSH access from R1 to R3, while excluding access via other remote connection protocols using the user root and password s3cret on router R3 using RSA. Verify connectivity from router R1 to R3 using a destination address assigned to interface E0/2 on R3.`,
+**4.** Configure SSH access from R1 to R3, while excluding access via other remote connection protocols using the user root and password s3cret on router R3 using RSA. Verify connectivity from router R1 to R3 using a destination address assigned to interface E0/2 on R3.`,
 
   20: `All physical cabling is in place and verified. Connectivity for PC1, PC2 and PC3 must be established to the switches. Each port connecting to the PCs must be configured as an end-user port and only allow the designated VLAN.
 
-1. Configure VLAN 99 on all three switches and label it exactly as FINANCIAL
+**1.** Configure VLAN 99 on all three switches and label it exactly as FINANCIAL
 
-2. Configure the switch ports connecting to PC1, PC2 and PC3
+**2.** Configure the switch ports connecting to PC1, PC2 and PC3
 
-3. Cisco's neighbor discovery protocol has been disabled on SW-1 and must be re-enabled
+**3.** Cisco's neighbor discovery protocol has been disabled on SW-1 and must be re-enabled
 
-4. PC1 must not be able to discover SW-1`,
+**4.** PC1 must not be able to discover SW-1`,
 
   21: `Refer to the topology. All physical cabling is in place. Configure local user account, configure a Named ACL (NACL), and Dynamic Arp Inspection.
 
-1. Configure a local account on Sw3 with telnet access only on virtual ports 0-4. Use the following information: o Username: tech12 o Password: load1key o Algorithm type: md5 o Privilege level: Exec mode
+**1.** Configure a local account on Sw3 with telnet access only on virtual ports 0-4. Use the following information: o Username: tech12 o Password: load1key o Algorithm type: md5 o Privilege level: Exec mode
 
-2. Configure and apply a NACL on R1 to control network traffic towards ISP: o Name: ISP_ACL o Restrict RFC 1918 class A and B addresses o Allow all other addresses
+**2.** Configure and apply a NACL on R1 to control network traffic towards ISP: o Name: ISP_ACL o Restrict RFC 1918 class A and B addresses o Allow all other addresses
 
-3. A DHCP IP Pool is preconfigured on R1 for VLAN 5, and DHCP Snooping is configured on Sw2. Configure on Sw2: o Dynamic Arp Inspection for VLAN 5 o Enable validation of the ARP packet destination MAC address o Enable validation of the ARP packet source MAC address o Enable validation of the ARP Packet IP address`,
+**3.** A DHCP IP Pool is preconfigured on R1 for VLAN 5, and DHCP Snooping is configured on Sw2. Configure on Sw2: o Dynamic Arp Inspection for VLAN 5 o Enable validation of the ARP packet destination MAC address o Enable validation of the ARP packet source MAC address o Enable validation of the ARP Packet IP address`,
 
-  22: `Task 1: Configure trunks between Sw1 and Sw2 on ports E0/0 and E0/1 using the IEEE standard frame tagging method. • Add VLAN 99 as untagged on the trunk ports. • Only extend VLAN 110 and the untagged VLAN across the trunk. • Verify that PC1 is capable of pinging PC2.
+  22: `**Task 1:** Configure trunks between Sw1 and Sw2 on ports E0/0 and E0/1 using the IEEE standard frame tagging method. • Add VLAN 99 as untagged on the trunk ports. • Only extend VLAN 110 and the untagged VLAN across the trunk. • Verify that PC1 is capable of pinging PC2.
 
-Task 2: On Sw1 and Sw2, use IEEE 802.3ad link aggregation. • Combine E0/0 and E0/1 into a single logical link while leaving the trunk configurations intact. • Assign number 20 to the link. • Both links must negotiate aggregation.`,
+**Task 2:** On Sw1 and Sw2, use IEEE 802.3ad link aggregation. • Combine E0/0 and E0/1 into a single logical link while leaving the trunk configurations intact. • Assign number 20 to the link. • Both links must negotiate aggregation.`,
 
   23: `All physical cabling is in place and verified. Connectivity for the Switches on ports E0/1, E0/2, and E0/3 must be configured and available for voice and data capabilities.
 
-1. Configure Sw1 and Sw2 with the VLAN naming as indicated.
+**1.** Configure Sw1 and Sw2 with the VLAN naming as indicated.
 
-2. Assign the VLANs to the appropriate interfaces and set a non-trunking, non-tagged, single-VLAN for each interface according to the topology.
+**2.** Assign the VLANs to the appropriate interfaces and set a non-trunking, non-tagged, single-VLAN for each interface according to the topology.
 
-3. Configure both switches to use the L2 vendor-neutral discovery protocol to broadcast device information, including the native VLAN across the e0/0 interfaces.`,
+**3.** Configure both switches to use the L2 vendor-neutral discovery protocol to broadcast device information, including the native VLAN across the e0/0 interfaces.`,
 
   24: `Refer to the topology. All physical cabling is in place. Routers 2 and 3 are inaccessible. Configure OSPF routing for the network and ensure R1 has joined Area 0 without using network statements.
 
-Task 1: • Configure OSPF on R1 with a process ID and router- ID only as follows: o use process ID 33 o use EO/1 IP as the router ID
+**Task 1:** • Configure OSPF on R1 with a process ID and router- ID only as follows: o use process ID 33 o use EO/1 IP as the router ID
 
-Task 2: • Configure R1 to establish neighbor adjacencies with R2 and R3. The network statement under the OSPF process must not be used. • Configure R1 to always become the DR for Area 0`,
+**Task 2:** • Configure R1 to establish neighbor adjacencies with R2 and R3. The network statement under the OSPF process must not be used. • Configure R1 to always become the DR for Area 0`,
 
   25: `Configure IPv4 and IPv6 connectivity between two routers. For IPv4, use a /28 network from the 192.168.180.0/24 private range. For IPv6, use the first /64 subnet from the 2001:0db8:acca::/48 subnet.
 
-1. Using Ethernet0/1 on routers R1 and R2, configure the next usable /28 from the 192.168.180.0/24 range. The network 192.168.180.0/28 is unavailable.
+**1.** Using Ethernet0/1 on routers R1 and R2, configure the next usable /28 from the 192.168.180.0/24 range. The network 192.168.180.0/28 is unavailable.
 
-2. For the IPv4 /28 subnet, router R1 must be configured with the first usable host address.
+**2.** For the IPv4 /28 subnet, router R1 must be configured with the first usable host address.
 
-3. For the IPv4 /28 subnet, router R2 must be configured with the last usable host address.
+**3.** For the IPv4 /28 subnet, router R2 must be configured with the last usable host address.
 
-4. For the IPv6 /64 subnet, configure the routers with the IP addressing provided from the topology.
+**4.** For the IPv6 /64 subnet, configure the routers with the IP addressing provided from the topology.
 
-5. A ping must work between the routers on the IPv4 and IPv6 address ranges.`,
+**5.** A ping must work between the routers on the IPv4 and IPv6 address ranges.`,
 
   26: `Three switches must be configured for Layer 2 connectivity. The company requires only the designated VLANs to be configured on their respective switches and permitted across any links between switches for security purposes. Do not modify or delete VTP configurations. The network needs two user-defined VLANs configured: VLAN 202: MARKETING, VLAN 303: FINANCE.
 
-1. Configure the VLANs on the designated switches and assign them as access ports to the interfaces connected to the PCs.
+**1.** Configure the VLANs on the designated switches and assign them as access ports to the interfaces connected to the PCs.
 
-2. Configure the e0/2 interfaces on Sw1 and Sw2 as 802.1q trunks with only the required VLANs permitted.
+**2.** Configure the e0/2 interfaces on Sw1 and Sw2 as 802.1q trunks with only the required VLANs permitted.
 
-3. Configure the e0/3 interfaces on Sw2 and Sw3 as 802.1q trunks with only the required VLANs permitted.`,
+**3.** Configure the e0/3 interfaces on Sw2 and Sw3 as 802.1q trunks with only the required VLANs permitted.`,
 
   27: `Refer to the topology. All physical cabling is in place. Configure a local user account, a Named ACL (NACL), and security.
 
-Task 1: Configure a local account on Sw101 with telnet access only on virtual ports 0-4. Use the following information: • Username: support • Password: max2learn • Privilege level: Exec mode
+**Task 1:** Configure a local account on Sw101 with telnet access only on virtual ports 0-4. Use the following information: • Username: support • Password: max2learn • Privilege level: Exec mode
 
-Task 2: Configure and apply a single NACL on Sw101 using the following: • Name: ENT_ACL • Restrict only PC2 on VLAN 200 from pinging PC1 • Allow only PC2 on VLAN 200 to telnet to Sw101 • Prevent all other devices from telnetting from VLAN 200 • Allow all other network traffic from VLAN 200
+**Task 2:** Configure and apply a single NACL on Sw101 using the following: • Name: ENT_ACL • Restrict only PC2 on VLAN 200 from pinging PC1 • Allow only PC2 on VLAN 200 to telnet to Sw101 • Prevent all other devices from telnetting from VLAN 200 • Allow all other network traffic from VLAN 200
 
-Task 3: Configure security on interface Ethernet 0/0 of Sw102: • Set the maximum number of secure MAC addresses to four. • Drop packets with unknown source addresses until the number of secure MAC addresses drops below the configured maximum value. No notification action is required. • Allow secure MAC addresses to be learned dynamically.`,
+**Task 3:** Configure security on interface Ethernet 0/0 of Sw102: • Set the maximum number of secure MAC addresses to four. • Drop packets with unknown source addresses until the number of secure MAC addresses drops below the configured maximum value. No notification action is required. • Allow secure MAC addresses to be learned dynamically.`,
 };
 
 
