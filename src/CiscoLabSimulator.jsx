@@ -22,6 +22,7 @@ export default function CiscoLabSimulator() {
   const [currentInput, setCurrentInput] = useState("");
   const [cmdHistoryIdx, setCmdHistoryIdx] = useState(-1);
   const [showHint, setShowHint] = useState({});
+  const [hintLevel, setHintLevel] = useState({}); // 0=hidden, 1=command families, 2=first cmd masked
   const [completedTasks, setCompletedTasks] = useState({});
   const [sidebarTab, setSidebarTab] = useState("tasks");
   const [sidebarWidth, setSidebarWidth] = useState(400);
@@ -165,6 +166,7 @@ export default function CiscoLabSimulator() {
       }
       setSelectedDevice(lab.devices[0]?.name);
       setShowHint({});
+      setHintLevel({});
       setShowDesc(true);
       setCheckResults(null);
       undoStack.current = {};
@@ -517,7 +519,37 @@ export default function CiscoLabSimulator() {
     }
   }, [handleCommand, cmdHistoryIdx, currentState, currentInput]);
 
-  const toggleTaskComplete = (labId, taskId) => {
+  // ─── Progressive hint helpers ────────────────────────────────────────────
+  // Level 1: command families extracted from check keywords
+  const getHintLevel1 = (task) => {
+    if (!task.check || task.check.length === 0) return "No hint available.";
+    const families = task.check.map(keywords => {
+      // First keyword is usually the command family
+      return `• ${keywords[0]}`;
+    });
+    return `💡 Commands needed:\n${families.join("\n")}`;
+  };
+
+  // Level 2: first line of hint with values after 2nd word masked
+  const getHintLevel2 = (task) => {
+    if (!task.hint) return "No hint available.";
+    const lines = task.hint.split("\n").filter(l => l.trim() && !l.trim().startsWith("!") && !l.trim().startsWith("On "));
+    const firstLine = lines[0] || "";
+    const words = firstLine.trim().split(/\s+/);
+    // Keep first 2 words (command), mask the rest with ???
+    const masked = words.length > 2
+      ? words.slice(0, 2).join(" ") + " " + words.slice(2).map(() => "???").join(" ")
+      : firstLine;
+    return `💡 First command:\n${masked}${lines.length > 1 ? `\n(+ ${lines.length - 1} more)` : ""}`;
+  };
+
+  const cycleHint = (key) => {
+    setHintLevel(prev => {
+      const current = prev[key] || 0;
+      const next = current >= 2 ? 0 : current + 1;
+      return { ...prev, [key]: next };
+    });
+  };
     setCompletedTasks(prev => { const key = `${labId}-${taskId}`; return { ...prev, [key]: !prev[key] }; });
   };
 
@@ -702,7 +734,20 @@ export default function CiscoLabSimulator() {
             <span style={{ fontSize: 11, color: T.textDim }}>
               © {new Date().getFullYear()} Z-eq — All rights reserved
             </span>
-           </div>
+            <a
+              href="https://github.com/Z-eq/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.textMuted, textDecoration: "none", transition: "color 0.2s" }}
+              onMouseEnter={e => e.currentTarget.style.color = T.accent}
+              onMouseLeave={e => e.currentTarget.style.color = T.textMuted}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12"/>
+              </svg>
+              github.com/Z-eq
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -864,6 +909,19 @@ export default function CiscoLabSimulator() {
                         style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, border: `1px solid ${T.border}`, background: T.bg, color: T.switchText, cursor: "pointer", fontFamily: "inherit" }}>
                         Open {task.device}
                       </button>
+                      {/* Progressive hint button — visible to all */}
+                      <button onClick={() => cycleHint(key)}
+                        style={{
+                          fontSize: 10, padding: "3px 8px", borderRadius: 4,
+                          border: `1px solid ${(hintLevel[key] || 0) > 0 ? T.accentAlt + "80" : T.border}`,
+                          background: (hintLevel[key] || 0) > 0 ? T.accentAlt + "15" : T.bg,
+                          color: (hintLevel[key] || 0) > 0 ? T.accentAlt : T.textMuted,
+                          cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s",
+                        }}>
+                        {(hintLevel[key] || 0) === 0 && "💡 Hint"}
+                        {(hintLevel[key] || 0) === 1 && "💡 Hint (1/2)"}
+                        {(hintLevel[key] || 0) === 2 && "💡 Hint (2/2)"}
+                      </button>
                       {isAdmin() && (
                       <button onClick={() => setShowHint(prev => ({ ...prev, [key]: !prev[key] }))}
                         style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, border: `1px solid ${T.border}`, background: T.bg, color: T.warn, cursor: "pointer", fontFamily: "inherit" }}>
@@ -871,6 +929,15 @@ export default function CiscoLabSimulator() {
                       </button>
                       )}
                     </div>
+                    {/* Progressive hint display */}
+                    {(hintLevel[key] || 0) > 0 && (
+                      <div style={{ padding: "8px 12px", background: T.accentAlt + "10", borderTop: `1px solid ${T.accentAlt}30` }}>
+                        <pre style={{ margin: 0, fontSize: 11, color: T.accentAlt, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+                          {(hintLevel[key] || 0) === 1 ? getHintLevel1(task) : getHintLevel2(task)}
+                        </pre>
+                      </div>
+                    )}
+                    {/* Full solution — admin only */}
                     {hintVisible && (
                       <div style={{ padding: "8px 12px", background: T.hintBg, borderTop: `1px solid ${T.border}` }}>
                         <pre style={{ margin: 0, fontSize: 11, color: T.routerText, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{task.hint}</pre>
