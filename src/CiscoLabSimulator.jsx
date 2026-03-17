@@ -7,6 +7,7 @@ import { processCommand } from "./iosCommands";
 import { buildRunningConfig } from "./iosConfig";
 import { getTaskResults } from "./taskVerification";
 import { isAdmin } from "./main";
+import { lookupCmd } from "./iosCmdTree";
 
 // ─── URL helpers ──────────────────────────────────────────────────────────────
 function getLabIdFromUrl() {
@@ -251,6 +252,22 @@ export default function CiscoLabSimulator() {
     if (!currentState) return;
     const prompt = getPrompt(currentState);
 
+    // ─── ? inline help ────────────────────────────────────────────────────
+    if (cmd.trimEnd().endsWith("?")) {
+      const partial = cmd.slice(0, -1); // strip the ?
+      const { matches } = lookupCmd(partial, currentState.mode);
+      const formatted = matches.length > 0
+        ? matches.map(m => `  ${m.word.padEnd(30)} ${m.desc}`).join("\n")
+        : "% Unrecognized command";
+      setTerminalHistory(prev => [
+        ...prev,
+        { type: "input", text: `${prompt} ${cmd}` },
+        { type: "output", text: formatted },
+      ]);
+      setCurrentInput(partial); // keep what was typed minus the ?
+      return;
+    }
+
     // Empty enter: just show prompt line (like real IOS scrolling)
     if (!cmd.trim()) {
       setTerminalHistory(prev => [...prev, { type: "input", text: `${prompt} ` }]);
@@ -319,217 +336,83 @@ export default function CiscoLabSimulator() {
       else { setCmdHistoryIdx(-1); setCurrentInput(""); }
     } else if (e.key === "Tab") {
       e.preventDefault();
-      const partial = currentInput;
+      const input = currentInput;
       const mode = currentState?.mode || "user";
 
-      // ─── Full IOS command database per mode ───────────────────────────────
-      const IOS_CMDS = {
-        user: [
-          "enable", "exit", "logout", "ping", "show", "traceroute",
-        ],
-        privileged: [
-          "clear arp-cache", "clear counters", "clear ip arp", "clear mac address-table dynamic",
-          "clock set",
-          "configure terminal",
-          "copy running-config startup-config", "copy startup-config running-config",
-          "crypto key generate rsa",
-          "debug all", "disable",
-          "erase startup-config",
-          "exit", "logout",
-          "ping", "reload",
-          "show arp",
-          "show cdp neighbors", "show cdp neighbors detail",
-          "show clock",
-          "show etherchannel summary",
-          "show flash:",
-          "show history",
-          "show interfaces", "show interfaces status", "show interfaces switchport", "show interfaces trunk",
-          "show inventory",
-          "show ip access-lists",
-          "show ip arp inspection", "show ip arp inspection statistics",
-          "show ip dhcp binding", "show ip dhcp snooping", "show ip dhcp snooping binding",
-          "show ip interface brief",
-          "show ip nat translations",
-          "show ip ospf", "show ip ospf interface", "show ip ospf neighbor",
-          "show ip protocols",
-          "show ip route",
-          "show ip ssh",
-          "show ipv6 route",
-          "show lldp neighbors", "show lldp neighbors detail",
-          "show logging",
-          "show mac address-table",
-          "show port-security", "show port-security interface",
-          "show running-config",
-          "show spanning-tree",
-          "show startup-config",
-          "show users", "show version",
-          "show vlan", "show vlan brief",
-          "ssh", "terminal length 0", "traceroute",
-          "undebug all",
-          "write memory",
-        ],
-        config: [
-          "cdp run",
-          "crypto key generate rsa",
-          "do show running-config", "do show ip interface brief", "do show vlan brief",
-          "do show ip route", "do show interfaces trunk", "do show etherchannel summary",
-          "do write memory", "do ping",
-          "hostname",
-          "interface Ethernet0/0", "interface Ethernet0/1", "interface Ethernet0/2", "interface Ethernet0/3",
-          "interface GigabitEthernet0/0", "interface GigabitEthernet0/1",
-          "interface Loopback0", "interface Loopback1",
-          "interface Port-channel1",
-          "interface range",
-          "ip access-list extended", "ip access-list standard",
-          "ip arp inspection validate", "ip arp inspection vlan",
-          "ip dhcp excluded-address", "ip dhcp pool",
-          "ip dhcp snooping", "ip dhcp snooping vlan", "ip dhcp snooping verify mac-address",
-          "ip domain-name",
-          "ip nat inside source list", "ip nat pool",
-          "ip route",
-          "ip ssh version 2",
-          "ipv6 route", "ipv6 unicast-routing",
-          "line console 0", "line vty 0 4",
-          "lldp run",
-          "no cdp run", "no ip domain-lookup", "no ip http server", "no ip http secure-server",
-          "ntp master", "ntp server",
-          "router ospf",
-          "spanning-tree mode rapid-pvst", "spanning-tree vlan",
-          "username",
-          "vlan",
-        ],
-        "config-if": [
-          "cdp enable",
-          "channel-group",
-          "description",
-          "duplex auto", "duplex full", "duplex half",
-          "encapsulation dot1q",
-          "ip access-group",
-          "ip address", "ip address dhcp",
-          "ip arp inspection trust",
-          "ip dhcp snooping trust",
-          "ip helper-address",
-          "ip nat inside", "ip nat outside",
-          "ip ospf",
-          "ipv6 address", "ipv6 enable",
-          "lldp receive", "lldp transmit",
-          "no cdp enable",
-          "no lldp receive", "no lldp transmit",
-          "no shutdown",
-          "no switchport",
-          "shutdown",
-          "spanning-tree bpduguard enable", "spanning-tree portfast",
-          "speed",
-          "storm-control broadcast level",
-          "switchport access vlan",
-          "switchport mode access", "switchport mode trunk",
-          "switchport nonegotiate",
-          "switchport port-security",
-          "switchport port-security maximum",
-          "switchport port-security violation protect",
-          "switchport port-security violation restrict",
-          "switchport port-security violation shutdown",
-          "switchport trunk allowed vlan",
-          "switchport trunk encapsulation dot1q",
-          "switchport trunk native vlan",
-          "switchport voice vlan",
-        ],
-        "config-subif": [
-          "description", "encapsulation dot1q",
-          "ip address", "ip helper-address", "ip nat inside", "ip nat outside", "ip ospf",
-          "ipv6 address", "no shutdown", "shutdown",
-        ],
-        "config-line": [
-          "exec-timeout", "login local", "no exec-timeout",
-          "password", "privilege level 15",
-          "transport input all", "transport input none", "transport input ssh", "transport input telnet",
-        ],
-        "config-router": [
-          "area", "auto-cost reference-bandwidth",
-          "default-information originate", "distance",
-          "log-adjacency-changes",
-          "network",
-          "no passive-interface", "passive-interface", "passive-interface default",
-          "redistribute connected", "redistribute static",
-          "router-id",
-        ],
-        "config-vlan": ["name", "state active", "state suspend"],
-        "config-acl": ["deny", "permit", "remark"],
-        "config-ext-acl": [
-          "deny icmp", "deny ip", "deny tcp", "deny udp",
-          "permit icmp", "permit ip", "permit tcp", "permit udp",
-          "remark",
-        ],
-        "config-dhcp": [
-          "default-router", "dns-server", "domain-name", "lease", "network", "option",
-        ],
-      };
+      // ─── IOS tab rules: 3 chars on first word, 1 char on subsequent ──────
+      const words = input.trimEnd().split(/\s+/).filter(Boolean);
+      const endsWithSpace = input.endsWith(" ");
+      const currentWord = endsWithSpace ? "" : (words[words.length - 1] || "");
+      const isFirstWord = words.length <= 1 && !endsWithSpace;
 
-      // config-if completions also available in all config sub-modes via "do"
-      const allConfigModes = ["config", "config-if", "config-subif", "config-line", "config-router", "config-vlan", "config-acl", "config-ext-acl", "config-dhcp"];
+      const minChars = isFirstWord ? 3 : 1;
+      if (currentWord.length < minChars) return;
 
-      let cmdList = IOS_CMDS[mode] || [];
-      // In all config sub-modes, add do-commands from config list
-      if (mode !== "config" && allConfigModes.includes(mode)) {
-        const doCmds = (IOS_CMDS["config"] || []).filter(c => c.startsWith("do "));
-        cmdList = [...cmdList, ...doCmds];
-      }
-
-      // ─── Find completions ─────────────────────────────────────────────────
-      const lowerPartial = partial.toLowerCase();
-      const matches = lowerPartial
-        ? cmdList.filter(c => c.toLowerCase().startsWith(lowerPartial))
-        : cmdList;
+      const { matches, partial } = lookupCmd(input, mode);
 
       if (matches.length === 0) {
-        // No match — do nothing (like real IOS)
-      } else if (matches.length === 1) {
-        // Exactly one match — complete it, add trailing space
-        const completed = matches[0];
-        setCurrentInput(completed.endsWith(" ") ? completed : completed + " ");
+        // No match — beep (do nothing, like real IOS)
+      } else if (matches.length === 1 && partial !== "" && matches[0].word !== "<cr>" && !matches[0].word.startsWith("<")) {
+        // Exactly one keyword match — complete it
+        const base = input.slice(0, input.length - partial.length);
+        setCurrentInput(base + matches[0].word + " ");
       } else {
-        // Multiple matches — show them in terminal, complete common prefix
-        const commonPrefix = matches.reduce((pfx, str) => {
-          const s = str.toLowerCase();
-          let i = 0;
-          while (i < pfx.length && i < s.length && pfx[i] === s[i]) i++;
-          return pfx.slice(0, i);
-        }, matches[0].toLowerCase());
-
-        // Format like real IOS: two columns
-        const maxLen = Math.max(...matches.map(c => c.length));
-        const colW = Math.min(maxLen + 2, 36);
-        const cols = Math.max(1, Math.floor(80 / colW));
-        const rows = [];
-        for (let i = 0; i < matches.length; i += cols) {
-          rows.push(matches.slice(i, i + cols).map(c => c.padEnd(colW)).join("").trimEnd());
+        // Multiple matches — show like real IOS, complete common prefix of keywords
+        const keywords = matches.filter(m => !m.word.startsWith("<") && m.word !== "<cr>");
+        if (keywords.length === 1 && partial !== "") {
+          const base = input.slice(0, input.length - partial.length);
+          setCurrentInput(base + keywords[0].word + " ");
+          return;
         }
+
+        const prompt = getPrompt(currentState);
+        const maxLen = Math.max(0, ...matches.map(m => m.word.length));
+        const colW = Math.min(maxLen + 2, 30);
+        const formatted = matches
+          .map(m => `  ${m.word.padEnd(colW)} ${m.desc}`)
+          .join("\n");
 
         setTerminalHistory(h => [
           ...h,
-          { type: "output", text: `${currentState ? (currentState.hostname + (mode === "user" ? ">" : mode === "privileged" ? "#" : mode === "config" ? "(config)#" : "(config-if)#")) : ""}${partial}` },
-          { type: "output", text: rows.join("\n") },
+          { type: "input", text: `${prompt} ${input}` },
+          { type: "output", text: formatted },
         ]);
 
-        // Complete to common prefix if it's longer than what user typed
-        if (commonPrefix.length > lowerPartial.length) {
-          setCurrentInput(commonPrefix);
+        // Complete common prefix of keyword matches
+        if (keywords.length > 1 && partial !== "") {
+          const commonPfx = keywords.reduce((pfx, m) => {
+            const s = m.word.toLowerCase();
+            let i = 0;
+            while (i < pfx.length && i < s.length && pfx[i] === s[i]) i++;
+            return pfx.slice(0, i);
+          }, keywords[0].word.toLowerCase());
+          if (commonPfx.length > partial.length) {
+            const base = input.slice(0, input.length - partial.length);
+            setCurrentInput(base + commonPfx);
+          }
         }
       }
     }
   }, [handleCommand, cmdHistoryIdx, currentState, currentInput]);
 
-  // ─── Progressive hint helpers ─────────────────────────────────────────────
+  // ─── Progressive hint helpers ────────────────────────────────────────────
+  // Level 1: command families extracted from check keywords
   const getHintLevel1 = (task) => {
     if (!task.check || task.check.length === 0) return "No hint available.";
-    return `💡 Commands needed:\n${task.check.map(kws => `• ${kws[0]}`).join("\n")}`;
+    const families = task.check.map(keywords => {
+      // First keyword is usually the command family
+      return `• ${keywords[0]}`;
+    });
+    return `💡 Commands needed:\n${families.join("\n")}`;
   };
 
+  // Level 2: first line of hint with values after 2nd word masked
   const getHintLevel2 = (task) => {
     if (!task.hint) return "No hint available.";
     const lines = task.hint.split("\n").filter(l => l.trim() && !l.trim().startsWith("!") && !l.trim().startsWith("On "));
     const firstLine = lines[0] || "";
     const words = firstLine.trim().split(/\s+/);
+    // Keep first 2 words (command), mask the rest with ???
     const masked = words.length > 2
       ? words.slice(0, 2).join(" ") + " " + words.slice(2).map(() => "???").join(" ")
       : firstLine;
@@ -538,12 +421,11 @@ export default function CiscoLabSimulator() {
 
   const cycleHint = (key) => {
     setHintLevel(prev => {
-      const cur = prev[key] || 0;
-      return { ...prev, [key]: cur >= 2 ? 0 : cur + 1 };
+      const current = prev[key] || 0;
+      const next = current >= 2 ? 0 : current + 1;
+      return { ...prev, [key]: next };
     });
   };
-
-  const toggleTaskComplete = (labId, taskId) => {
     setCompletedTasks(prev => { const key = `${labId}-${taskId}`; return { ...prev, [key]: !prev[key] }; });
   };
 
@@ -728,7 +610,20 @@ export default function CiscoLabSimulator() {
             <span style={{ fontSize: 11, color: T.textDim }}>
               © {new Date().getFullYear()} Z-eq — All rights reserved
             </span>
-           </div>
+            <a
+              href="https://github.com/Z-eq/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.textMuted, textDecoration: "none", transition: "color 0.2s" }}
+              onMouseEnter={e => e.currentTarget.style.color = T.accent}
+              onMouseLeave={e => e.currentTarget.style.color = T.textMuted}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12"/>
+              </svg>
+              github.com/Z-eq
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -890,6 +785,7 @@ export default function CiscoLabSimulator() {
                         style={{ fontSize: 10, padding: "3px 8px", borderRadius: 4, border: `1px solid ${T.border}`, background: T.bg, color: T.switchText, cursor: "pointer", fontFamily: "inherit" }}>
                         Open {task.device}
                       </button>
+                      {/* Progressive hint button — visible to all */}
                       <button onClick={() => cycleHint(key)}
                         style={{
                           fontSize: 10, padding: "3px 8px", borderRadius: 4,
@@ -909,6 +805,7 @@ export default function CiscoLabSimulator() {
                       </button>
                       )}
                     </div>
+                    {/* Progressive hint display */}
                     {(hintLevel[key] || 0) > 0 && (
                       <div style={{ padding: "8px 12px", background: T.accentAlt + "10", borderTop: `1px solid ${T.accentAlt}30` }}>
                         <pre style={{ margin: 0, fontSize: 11, color: T.accentAlt, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
@@ -916,6 +813,7 @@ export default function CiscoLabSimulator() {
                         </pre>
                       </div>
                     )}
+                    {/* Full solution — admin only */}
                     {hintVisible && (
                       <div style={{ padding: "8px 12px", background: T.hintBg, borderTop: `1px solid ${T.border}` }}>
                         <pre style={{ margin: 0, fontSize: 11, color: T.routerText, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{task.hint}</pre>

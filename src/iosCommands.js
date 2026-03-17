@@ -357,15 +357,9 @@ export function processCommand(input, state) {
       state.globalCmds = cfgAdd(state.globalCmds, lc);
       return { output: "", state };
     }
-    // Crypto key
-    if (pFirst === "crypto" && positiveParts[1] === "key" && !isNo) {
-      state.sshConfigured = true;
-      const bits = parts.find(p => /^\d{3,4}$/.test(p)) || "1024";
-      state.globalCmds = cfgAdd(state.globalCmds, lc);
-      return {
-        output: `The name for the keys will be: ${state.hostname}.lab.local\n% Generating ${bits} bit RSA keys...\n[OK]`,
-        state
-      };
+    // Crypto key — NOT valid in config mode, only in privileged exec
+    if (pFirst === "crypto") {
+      return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
     }
     // NTP
     if (pFirst === "ntp") {
