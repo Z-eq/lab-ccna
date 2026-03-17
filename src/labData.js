@@ -616,7 +616,7 @@ export const LAB_DESCRIPTIONS = {
 
 3. Configure R1 as a DHCP server for the network 10.1.3.0/24 in a pool named NETPOOL. Using a single command, exclude addresses 1 - 10 from the range. Interface Ethernet0/2 on R3 must be issued the IP address of 10.1.3.11 via DHCP.
 
-4. Configure SSH connectivity from R1 to R3, while excluding access via other remote connection protocols. Access for user netadmin and password N3t4ccess must be set on router R3 using RSA and 1024 bits. Verify connectivity using an SSH session from router R1 using a destination address of 10.1.3.11. Do NOT modify console.`,
+4. Configure SSH connectivity from R1 to R3, while excluding access via other remote connection protocols. Access for user netadmin and password N3t4ccess must be set on router R3 using RSA and 1024 bits, configure domain lab.local. Verify connectivity using an SSH session from router R1 using a destination address of 10.1.3.11. Do NOT modify console.`,
 
   3: `All physical cabling between the two switches is installed. Configure the network connectivity between the switches using the designated VLANs and interfaces.
 
