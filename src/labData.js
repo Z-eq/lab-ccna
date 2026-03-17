@@ -16,7 +16,7 @@ export const LABS = [
     ],
     topology: `Internet (172.20.20.128/25)\n    |.254\n   R3 (E0/1)\n    |E0/0 .3\n    | 10.10.13.0/24\n    |E0/0 .1\n   R1 ──E0/1(.1)── 10.10.12.0/25 ──E0/1(.2)── R2\n    └──E0/2(.129)── 10.10.12.128/25 ──E0/2(.130)─┘\n                                         E0/0 .2\n                                    10.10.31.0/24\n                                         E0/0 .1\n                                         SW1\n                                    LAN: 192.168.0.0/24`,
     tasks: [
-      { id: 1, text: "Configure reachability to the switch SW1 LAN subnet (192.168.0.0/24) in router R2", device: "R2",
+      { id: 1, text: "Configure a static route on R2 to reach the LAN subnet (192.168.0.0/24) via SW1 (10.10.31.1). SW1 is an L3 switch acting as the default gateway for the LAN and is directly connected to R2 via the 10.10.31.0/24 segment.", device: "R2",
         hint: "ip route 192.168.0.0 255.255.255.0 10.10.31.1",
         check: [["ip route","192.168.0.0","255.255.255.0","10.10.31.1"]] },
       { id: 2, text: "Configure default reachability to the Internet subnet (172.20.20.128/25) in router R1", device: "R1",
