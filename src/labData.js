@@ -49,7 +49,7 @@ export const LABS = [
       { id: 3, text: "Configure R1 DHCP server: pool NETPOOL, network 10.1.3.0/24, exclude addresses 1-10.", device: "R1",
         hint: "ip dhcp excluded-address 10.1.3.1 10.1.3.10\nip dhcp pool NETPOOL\nnetwork 10.1.3.0 255.255.255.0",
         check: [["ip dhcp excluded-address","10.1.3.1","10.1.3.10"],["ip dhcp pool","netpool"],["network","10.1.3.0","255.255.255.0"]] },
-      { id: 4, text: "Configure SSH on R3: user netadmin/N3t4ccess, privilege 15, RSA 1024 bits, SSH only on VTY lines.", device: "R3",
+      { id: 4, text: "Configure SSH on R3: user netadmin/N3t4ccess, privilege 15, RSA 1024 bits, SSH only on 0 4 VTY lines.", device: "R3",
         hint: "username netadmin privilege 15 secret N3t4ccess\nip domain-name lab.local\ncrypto key generate rsa\n1024\nline vty 0 4\ntransport input ssh\nlogin local",
         check: [["username","netadmin","privilege","15"],["secret","n3t4ccess"],["crypto key generate rsa"],["transport input ssh"],["login local"]] }
     ]
