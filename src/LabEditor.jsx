@@ -1372,6 +1372,15 @@ RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
         </div>
       </div>
 
+      {/* ─── FOOTER ─── */}
+      <div style={{ borderTop: `1px solid ${T.borderAccent}`, padding: "16px 32px", background: T.headerGrad, marginTop: "auto" }}>
+        <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: 11, color: T.textDim }}>
+            © {new Date().getFullYear()} Z-eq — All rights reserved
+          </span>
+        </div>
+      </div>
+
       <style>{`
         @keyframes slideIn {
           from { transform: translateX(30px); opacity: 0; }
