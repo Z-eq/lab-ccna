@@ -409,10 +409,26 @@ LAB DESIGN RULES
 - Topology ASCII art must show: device names, interface names, IP addresses, subnet info
 
 ══════════════════════════════════════════════════════════
-EXAMPLE TOPOLOGY FORMAT
+TOPOLOGY FORMAT — MANDATORY RULES
 ══════════════════════════════════════════════════════════
-"topology": "R1(E0/0 10.0.12.1/30)──────(E0/0 10.0.12.2/30)R2\\n         |                              |\\n    Lo0:1.1.1.1/32              Lo0:2.2.2.2/32"
+ALWAYS draw a detailed ASCII topology using box-drawing characters: ┌ ─ ┐ │ └ ┘ ├ ┤ ┬ ┴ ┼
+Use ══ for trunk links, ── for regular links, arrows ▼ ▲ ► ◄ for direction.
+ALWAYS show: device boxes, interface names, IP addresses, VLAN info, subnet info.
+The topology must be self-explanatory — a student should understand the full network from it.
 
+ROUTER-TO-ROUTER EXAMPLE:
+"topology": "         ┌──────────────────────┐         ┌──────────────────────┐\\n         │          R1          │         │          R2          │\\n         │  Lo0: 1.1.1.1/32     │         │  Lo0: 2.2.2.2/32     │\\n         └──────────┬───────────┘         └──────────┬───────────┘\\n                    │ E0/0                            │ E0/0\\n                    │ 10.0.12.1/30                    │ 10.0.12.2/30\\n                    └────────────────────────────────┘\\n                              10.0.12.0/30"
+
+ROUTER-SWITCH-PC EXAMPLE:
+"topology": "┌────────────────┐\\n│      R1        │\\n│ E0/0:10.0.0.1  │\\n└───────┬────────┘\\n        │ 10.0.0.0/24\\n        │ E0/0\\n┌───────┴────────┐\\n│      SW1       │\\n│  E0/1   E0/2   │\\n└──┬──────────┬──┘\\n   │          │\\n   │VLAN 10   │VLAN 20\\n┌──┴───┐   ┌──┴───┐\\n│ PC1  │   │ PC2  │\\n└──────┘   └──────┘"
+
+THREE-ROUTER OSPF EXAMPLE:
+"topology": "    ┌──────────────┐       ┌──────────────┐\\n    │      R1      │       │      R2      │\\n    │ Lo0:1.1.1.1  ├───────┤ Lo0:2.2.2.2  │\\n    │ E0/0:10.1.12.1│  /30 │ E0/0:10.1.12.2│\\n    └──────┬───────┘       └──────┬───────┘\\n           │E0/1                   │E0/1\\n           │10.1.13.1/30           │10.1.23.1/30\\n           │                       │\\n    ┌──────┴───────┐               │\\n    │      R3      ├───────────────┘\\n    │ Lo0:3.3.3.3  │ E0/2: 10.1.23.2/30\\n    │ E0/0:10.1.13.2│\\n    └──────────────┘"
+
+SWITCHING/VLAN EXAMPLE:
+"topology": "              ┌──────────────────┐\\n              │       SW1        │\\n              │  E0/0(Trunk)     │\\n              └───────┬──────────┘\\n           ═══════════╪═══════════ Trunk (VLAN 10,20,99)\\n              ┌───────┴──────────┐\\n              │       SW2        │\\n         ┌───┤E0/1         E0/2  ├───┐\\n         │   └──────────────────┘   │\\n         │ Access                   │ Access\\n         │ VLAN 10                  │ VLAN 20\\n    ┌────┴────┐                ┌────┴────┐\\n    │   PC1   │                │   PC2   │\\n    │VLAN 10  │                │VLAN 20  │\\n    └─────────┘                └─────────┘"
+
+Always adapt the style to the lab type. More complex labs = more detailed topology.
 RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
 
   const AI_PROVIDERS = {
