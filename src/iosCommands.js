@@ -166,7 +166,7 @@ export function processCommand(input, state) {
         state.sshConfigured = true;
         state.rsaBits = bits;
         return {
-          output: `The name for the keys will be: ${state.hostname}.lab.local\nChoose the size of the key modulus in the range of 360 to 4096 for your\n  General Purpose Keys. Choosing a key modulus greater than 512 may take\n  a few minutes.\n\nHow many bits in the modulus [512]: ${bits}\n% Generating ${bits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
+          output: `The name for the keys will be: ${state.hostname}.lab.local\n% Generating ${bits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
           state
         };
       } else {
@@ -209,7 +209,7 @@ export function processCommand(input, state) {
           state.rsaBits = bits;
           state.globalCmds = cfgAdd(state.globalCmds, `crypto key generate rsa ${bits}`);
           return {
-            output: `The name for the keys will be: ${state.hostname}.lab.local\nChoose the size of the key modulus in the range of 360 to 4096 for your\n  General Purpose Keys. Choosing a key modulus greater than 512 may take\n  a few minutes.\n\nHow many bits in the modulus [512]: ${bits}\n% Generating ${bits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
+            output: `The name for the keys will be: ${state.hostname}.lab.local\n% Generating ${bits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
             state
           };
         } else {
@@ -509,7 +509,7 @@ export function processCommand(input, state) {
           state.rsaBits = bits;
           state.globalCmds = cfgAdd(state.globalCmds, `crypto key generate rsa ${bits}`);
           return {
-            output: `The name for the keys will be: ${state.hostname}.lab.local\nChoose the size of the key modulus in the range of 360 to 4096 for your\n  General Purpose Keys. Choosing a key modulus greater than 512 may take\n  a few minutes.\n\nHow many bits in the modulus [512]: ${bits}\n% Generating ${bits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
+            output: `The name for the keys will be: ${state.hostname}.lab.local\n% Generating ${bits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
             state
           };
         } else {
@@ -795,3 +795,4 @@ export function processCommand(input, state) {
 
   return { output: "", state };
 }
+
