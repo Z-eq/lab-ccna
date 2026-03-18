@@ -411,24 +411,59 @@ LAB DESIGN RULES
 ══════════════════════════════════════════════════════════
 TOPOLOGY FORMAT — MANDATORY RULES
 ══════════════════════════════════════════════════════════
-ALWAYS draw a detailed ASCII topology using box-drawing characters: ┌ ─ ┐ │ └ ┘ ├ ┤ ┬ ┴ ┼
-Use ══ for trunk links, ── for regular links, arrows ▼ ▲ ► ◄ for direction.
-ALWAYS show: device boxes, interface names, IP addresses, VLAN info, subnet info.
-The topology must be self-explanatory — a student should understand the full network from it.
+CRITICAL: The topology field is parsed by an SVG renderer. The FIRST lines MUST be machine-parseable connection lines. Follow exactly:
 
-ROUTER-TO-ROUTER EXAMPLE:
-"topology": "         ┌──────────────────────┐         ┌──────────────────────┐\\n         │          R1          │         │          R2          │\\n         │  Lo0: 1.1.1.1/32     │         │  Lo0: 2.2.2.2/32     │\\n         └──────────┬───────────┘         └──────────┬───────────┘\\n                    │ E0/0                            │ E0/0\\n                    │ 10.0.12.1/30                    │ 10.0.12.2/30\\n                    └────────────────────────────────┘\\n                              10.0.12.0/30"
+RULE 1 — Every connection on its own line, format: "DeviceA(IfaceA) TYPE DeviceB(IfaceB)"
+  TYPE must be exactly "Trunk" or "Link" — no other words
+  "R1(E0/0) Trunk SW1(E0/0)"     ← router to switch trunk
+  "SW1(E0/1) Trunk SW2(E0/0)"    ← switch to switch trunk
+  "SW1(E0/2) Link PC1(E0/0)"     ← switch to PC access link
+  "SW2(E0/1) Link PC2(E0/0)"     ← switch to PC access link
 
-ROUTER-SWITCH-PC EXAMPLE:
-"topology": "┌────────────────┐\\n│      R1        │\\n│ E0/0:10.0.0.1  │\\n└───────┬────────┘\\n        │ 10.0.0.0/24\\n        │ E0/0\\n┌───────┴────────┐\\n│      SW1       │\\n│  E0/1   E0/2   │\\n└──┬──────────┬──┘\\n   │          │\\n   │VLAN 10   │VLAN 20\\n┌──┴───┐   ┌──┴───┐\\n│ PC1  │   │ PC2  │\\n└──────┘   └──────┘"
+RULE 2 — Every PC MUST have its own connection line. Never omit PC connections.
+  If lab has PC1 on SW1 and PC2 on SW2, you MUST write BOTH:
+    "SW1(E0/2) Link PC1(E0/0)"
+    "SW2(E0/1) Link PC2(E0/0)"
 
-THREE-ROUTER OSPF EXAMPLE:
-"topology": "    ┌──────────────┐       ┌──────────────┐\\n    │      R1      │       │      R2      │\\n    │ Lo0:1.1.1.1  ├───────┤ Lo0:2.2.2.2  │\\n    │ E0/0:10.1.12.1│  /30 │ E0/0:10.1.12.2│\\n    └──────┬───────┘       └──────┬───────┘\\n           │E0/1                   │E0/1\\n           │10.1.13.1/30           │10.1.23.1/30\\n           │                       │\\n    ┌──────┴───────┐               │\\n    │      R3      ├───────────────┘\\n    │ Lo0:3.3.3.3  │ E0/2: 10.1.23.2/30\\n    │ E0/0:10.1.13.2│\\n    └──────────────┘"
+RULE 3 — Every device in "devices" array MUST appear in at least one topology line.
 
-SWITCHING/VLAN EXAMPLE:
-"topology": "              ┌──────────────────┐\\n              │       SW1        │\\n              │  E0/0(Trunk)     │\\n              └───────┬──────────┘\\n           ═══════════╪═══════════ Trunk (VLAN 10,20,99)\\n              ┌───────┴──────────┐\\n              │       SW2        │\\n         ┌───┤E0/1         E0/2  ├───┐\\n         │   └──────────────────┘   │\\n         │ Access                   │ Access\\n         │ VLAN 10                  │ VLAN 20\\n    ┌────┴────┐                ┌────┴────┐\\n    │   PC1   │                │   PC2   │\\n    │VLAN 10  │                │VLAN 20  │\\n    └─────────┘                └─────────┘"
+RULE 4 — Use the ACTUAL interface names from the devices array, not generic "E0/0".
+  If PC1 only has "Ethernet0/0", write "PC1(E0/0)" not "PC1(E0/1)"
 
-Always adapt the style to the lab type. More complex labs = more detailed topology.
+RULE 5 — Device types:
+  "router" — Cisco router symbol (circle with arrows)
+  "switch" — Cisco switch symbol (box with port arrows)
+  "pc"     — PC symbol (monitor icon)
+  ALWAYS use type "pc" for end-hosts, never "router" or "switch"
+
+RULE 6 — Loopback interfaces: only include in devices array for routers, never switches/PCs
+
+After ALL connection lines, add a blank line then optional human-readable notes.
+
+══════════════════════════════════════════════════════════
+SIMULATOR CONSTRAINTS
+══════════════════════════════════════════════════════════
+- Max 6 devices recommended
+- Interfaces: Ethernet0/0–0/3 for all devices
+- Routers may also have: Loopback0, Loopback1, Serial0/0/0
+- No BGP, no MPLS — use static routes, OSPF, EIGRP only
+- PC devices have NO routing config — they are end-hosts only
+- For router-on-a-stick: use subinterfaces (Ethernet0/0.10, .20 etc.) NOT physical interfaces for VLANs
+- verify/show tasks should still have check arrays using show command outputs
+
+══════════════════════════════════════════════════════════
+TOPOLOGY EXAMPLES
+══════════════════════════════════════════════════════════
+
+ROUTER-ON-A-STICK (R1 + SW1 + SW2 + PC1 + PC2):
+"topology": "R1(E0/0) Trunk SW1(E0/0)\\nSW1(E0/1) Trunk SW2(E0/0)\\nSW1(E0/2) Link PC1(E0/0)\\nSW2(E0/1) Link PC2(E0/0)\\n\\nVLAN 10: 10.0.10.0/24 GW 10.0.10.1 — PC1\\nVLAN 20: 10.0.20.0/24 GW 10.0.20.1 — PC2\\nNative VLAN 88 on all trunks"
+
+THREE ROUTERS OSPF:
+"topology": "R1(E0/0) Link R2(E0/0)\\nR1(E0/1) Link R3(E0/0)\\nR2(E0/1) Link R3(E0/1)\\n\\n10.0.12.0/30: R1-R2\\n10.0.13.0/30: R1-R3\\n10.0.23.0/30: R2-R3"
+
+TWO SWITCHES + PCs:
+"topology": "SW1(E0/0) Trunk SW2(E0/0)\\nSW1(E0/1) Link PC1(E0/0)\\nSW2(E0/1) Link PC2(E0/0)\\n\\nVLAN 10 (Sales): PC1 on SW1\\nVLAN 20 (Engineering): PC2 on SW2"
+
 RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
 
   const AI_PROVIDERS = {
