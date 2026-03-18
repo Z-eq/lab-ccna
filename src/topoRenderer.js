@@ -1,372 +1,381 @@
-// topoRenderer.js — Programmatic SVG topology renderer v2
-// Handles routers (IP-based link detection) AND switches (topology-text + heuristic detection)
+// topoRenderer.js — SVG network topology renderer v3
+// Handles routers (IP-based link detection), switches (text-based), and mixed topologies
 
-// ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const W = 540;
-const H = 380;
-const BOX_W = 88;
-const BOX_H = 42;
-const MARGIN = 44; // keep boxes away from edge
+const H = 390;
+const BOX_W = 90;
+const BOX_H = 44;
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 function ipToNum(ip) {
-  return ip.split(".").reduce((acc, o) => (acc << 8) + parseInt(o, 10), 0) >>> 0;
+  const p = ip.split(".");
+  return ((parseInt(p[0],10)<<24)|(parseInt(p[1],10)<<16)|(parseInt(p[2],10)<<8)|parseInt(p[3],10))>>>0;
 }
-function getNetwork(cidr) {
+function getNet(cidr) {
   if (!cidr || !cidr.includes("/")) return null;
   const [ip, pfx] = cidr.split("/");
   const bits = parseInt(pfx, 10);
-  if (isNaN(bits) || bits < 0 || bits > 32) return null;
-  const mask = bits === 0 ? 0 : (0xFFFFFFFF << (32 - bits)) >>> 0;
-  const net = (ipToNum(ip) & mask) >>> 0;
-  return { net, prefix: bits };
+  if (isNaN(bits)||bits<0||bits>32) return null;
+  const mask = bits===0 ? 0 : (0xFFFFFFFF<<(32-bits))>>>0;
+  return { net:(ipToNum(ip)&mask)>>>0, bits, ipStr:ip };
 }
 function sameSubnet(a, b) {
-  const n1 = getNetwork(a), n2 = getNetwork(b);
-  if (!n1 || !n2 || n1.prefix !== n2.prefix) return false;
-  return n1.net === n2.net;
+  const n1=getNet(a), n2=getNet(b);
+  return n1&&n2&&n1.bits===n2.bits&&n1.net===n2.net;
 }
-function shortIf(name) {
-  return name
-    .replace(/GigabitEthernet/i, "Gi")
-    .replace(/FastEthernet/i, "Fa")
-    .replace(/Ethernet/i, "E")
-    .replace(/Loopback/i, "Lo")
-    .replace(/Port-channel/i, "Po")
-    .replace(/Serial/i, "Se")
-    .replace(/Vlan/i, "Vl");
+function shortIf(n) {
+  return n.replace(/GigabitEthernet/i,"Gi").replace(/FastEthernet/i,"Fa")
+          .replace(/Ethernet/i,"E").replace(/Loopback/i,"Lo")
+          .replace(/Port-channel/i,"Po").replace(/Serial/i,"Se")
+          .replace(/Vlan/i,"Vl");
 }
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
-function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
+
+// ─── BOX EDGE ─────────────────────────────────────────────────────────────────
+// Returns the point on the box edge in the direction of (tx,ty)
+function boxEdge(px, py, tx, ty) {
+  const dx = tx-px, dy = ty-py;
+  if (Math.abs(dx)<0.001 && Math.abs(dy)<0.001) return {x:px,y:py};
+  const hw = BOX_W/2+1, hh = BOX_H/2+1;
+  const sx = Math.abs(dx)>0.001 ? hw/Math.abs(dx) : 1e9;
+  const sy = Math.abs(dy)>0.001 ? hh/Math.abs(dy) : 1e9;
+  const s  = Math.min(sx,sy);
+  return { x: px+dx*s, y: py+dy*s };
+}
 
 // ─── LINK DETECTION ───────────────────────────────────────────────────────────
 function detectLinks(devices, topoText) {
   const links = [];
-  const seen = new Set();
+  const seen  = new Set();
 
-  // ── 1. IP-subnet matching (routers / L3 switches) ────────────────────────
-  for (let i = 0; i < devices.length; i++) {
-    for (let j = i + 1; j < devices.length; j++) {
-      const ifA = Object.entries(devices[i].interfaces || {});
-      const ifB = Object.entries(devices[j].interfaces || {});
-      for (const [nA, iA] of ifA) {
-        for (const [nB, iB] of ifB) {
-          if (!iA.ip || !iB.ip) continue;
-          if (/loopback/i.test(nA) || /loopback/i.test(nB)) continue;
+  const addLink = (from, to, fromIf, toIf, fromIp, toIp, isTrunk) => {
+    const key = [Math.min(from,to), Math.max(from,to)].join("|");
+    if (seen.has(key)) return;
+    seen.add(key);
+    links.push({ from, to, fromIf, toIf, fromIp:fromIp||"", toIp:toIp||"", isTrunk:!!isTrunk });
+  };
+
+  // ── 1. IP subnet matching (routers / L3) ─────────────────────────────────
+  for (let i=0; i<devices.length; i++) {
+    for (let j=i+1; j<devices.length; j++) {
+      const ifA = Object.entries(devices[i].interfaces||{});
+      const ifB = Object.entries(devices[j].interfaces||{});
+      for (const [nA,iA] of ifA) {
+        if (!iA.ip || /loopback/i.test(nA)) continue;
+        for (const [nB,iB] of ifB) {
+          if (!iB.ip || /loopback/i.test(nB)) continue;
           if (sameSubnet(iA.ip, iB.ip)) {
-            const key = [i, j, nA, nB].join("|");
-            if (!seen.has(key)) {
-              seen.add(key);
-              links.push({ from: i, to: j, fromIf: nA, toIf: nB, fromIp: iA.ip, toIp: iB.ip, type: "l3" });
-            }
+            addLink(i, j, nA, nB, iA.ip, iB.ip, false);
           }
         }
       }
     }
   }
 
-  // ── 2. Topology-text parsing (catches L2 switch connections) ─────────────
-  // Looks for patterns: SW1(E0/0) ── SW2, or SW1 -- SW2, or device names next to each other
-  if (topoText) {
+  // ── 2. Topology text — find device pairs and interface names ─────────────
+  if (topoText && devices.length >= 2) {
     const nameMap = {};
-    devices.forEach((d, i) => { nameMap[d.name.toLowerCase()] = i; });
-    const namePattern = devices.map(d => d.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-    if (namePattern) {
-      const re = new RegExp(`(${namePattern})[^\\n]{0,40}?(${namePattern})`, "gi");
-      let m;
-      while ((m = re.exec(topoText)) !== null) {
-        const a = nameMap[m[1].toLowerCase()];
-        const b = nameMap[m[2].toLowerCase()];
-        if (a !== undefined && b !== undefined && a !== b) {
-          const key = [Math.min(a,b), Math.max(a,b)].join("|");
-          if (!seen.has(key)) {
-            seen.add(key);
-            // Try to extract interface names from surrounding text
-            const seg = m[0];
-            const ifRe = /[EGFeSe](?:thernet|igabit|ast)?(\d+\/\d+(?:\/\d+)?)/gi;
-            const ifaces = [];
-            let fm;
-            while ((fm = ifRe.exec(seg)) !== null) ifaces.push(fm[0]);
-            links.push({
-              from: Math.min(a,b), to: Math.max(a,b),
-              fromIf: ifaces[0] || "E0/0", toIf: ifaces[1] || ifaces[0] || "E0/0",
-              fromIp: "", toIp: "", type: "l2"
-            });
-          }
-        }
+    devices.forEach((d,i) => { nameMap[d.name.toLowerCase()] = i; });
+
+    // Split into lines, parse each line for device pairs
+    topoText.split(/\n/).forEach(line => {
+      const lower = line.toLowerCase();
+      // Trunk if line contains trunk keyword OR double-line symbols OR port-channel
+      const isTrunk = /trunk|══|===|==|port.channel|\bpo\d/i.test(line);
+
+      // Find all device name occurrences in this line
+      const found = [];
+      devices.forEach((d,i) => {
+        const idx = lower.indexOf(d.name.toLowerCase());
+        if (idx !== -1) found.push({ i, idx, name: d.name });
+      });
+
+      // Sort by position in line
+      found.sort((a,b) => a.idx-b.idx);
+
+      // Create links between consecutive device pairs in same line
+      for (let k=0; k<found.length-1; k++) {
+        const a = found[k], b = found[k+1];
+        if (a.i === b.i) continue;
+
+        // Extract interface names from the segment around the devices
+        const seg = line.substring(Math.max(0, a.idx-5), b.idx + b.name.length + 25);
+        const ifaceRe = /\b([EGFe](?:thernet|igabit|ast)?|E|Gi?|Fa?|Po)\d+\/\d+(?:\/\d+)?/gi;
+        const ifaces = [];
+        let fm;
+        while ((fm = ifaceRe.exec(seg)) !== null) ifaces.push(fm[0]);
+
+        addLink(a.i, b.i,
+          ifaces[0] || "E0/0",
+          ifaces[1] || ifaces[0] || "E0/0",
+          "", "",
+          isTrunk
+        );
       }
-    }
+    });
   }
 
-  // ── 3. Heuristic: if still no links found, connect sequential devices ─────
+  // ── 3. Heuristic: if still no links, connect sequentially ────────────────
   if (links.length === 0 && devices.length >= 2) {
-    for (let i = 0; i < devices.length - 1; i++) {
-      const key = [i, i + 1].join("|");
-      if (!seen.has(key)) {
-        seen.add(key);
-        // Find first non-loopback interface on each side
-        const ifA = Object.keys(devices[i].interfaces || {}).find(n => !/loopback/i.test(n)) || "E0/0";
-        const ifB = Object.keys(devices[i+1].interfaces || {}).find(n => !/loopback/i.test(n)) || "E0/0";
-        links.push({ from: i, to: i+1, fromIf: ifA, toIf: ifB, fromIp: "", toIp: "", type: "heuristic" });
-      }
+    for (let i=0; i<devices.length-1; i++) {
+      const getFirstNonLoop = (d) =>
+        Object.keys(d.interfaces||{}).find(n => !/loopback/i.test(n)) || "E0/0";
+      addLink(i, i+1,
+        getFirstNonLoop(devices[i]),
+        getFirstNonLoop(devices[i+1]),
+        "", "", false);
     }
   }
-
-  // ── 4. Mark trunks / port-channels ───────────────────────────────────────
-  links.forEach(lk => {
-    lk.isTrunk = /port.channel|trunk/i.test(lk.fromIf) || /port.channel|trunk/i.test(lk.toIf);
-  });
 
   return links;
 }
 
-// ─── VLAN EXTRACTION ──────────────────────────────────────────────────────────
-function extractVlans(devices) {
-  // Returns [{id, name, devices:[]}]
-  const vlanMap = {};
-  devices.forEach(dev => {
-    // From vlanCfg if available
-    const vlans = dev.vlans || dev.vlanCfg || {};
-    Object.entries(vlans).forEach(([id, name]) => {
-      if (id === "1") return;
-      if (!vlanMap[id]) vlanMap[id] = { id, name: typeof name === "string" ? name : "", devs: [] };
-      if (!vlanMap[id].devs.includes(dev.name)) vlanMap[id].devs.push(dev.name);
-    });
-    // Also scan interfaces for switchport access vlan hints
-    Object.entries(dev.interfaces || {}).forEach(([, info]) => {
-      if (info.vlan) {
-        const id = String(info.vlan);
-        if (!vlanMap[id]) vlanMap[id] = { id, name: "", devs: [] };
-        if (!vlanMap[id].devs.includes(dev.name)) vlanMap[id].devs.push(dev.name);
-      }
-    });
-  });
-  return Object.values(vlanMap).sort((a, b) => parseInt(a.id) - parseInt(b.id)).slice(0, 8);
-}
-
 // ─── LAYOUT ───────────────────────────────────────────────────────────────────
-function computeLayout(n) {
-  const cx = W / 2, cy = H / 2 - 10;
+function layout(n) {
+  const cx = W/2, cy = (H-55)/2 + 12; // shift up a bit for VLAN table at bottom
   const pos = [];
-  if (n === 1) {
-    pos.push({ x: cx, y: cy });
-  } else if (n === 2) {
-    pos.push({ x: cx - 150, y: cy });
-    pos.push({ x: cx + 150, y: cy });
-  } else if (n === 3) {
-    // top + bottom-left + bottom-right
-    pos.push({ x: cx,        y: cy - 100 });
-    pos.push({ x: cx - 140,  y: cy + 65  });
-    pos.push({ x: cx + 140,  y: cy + 65  });
-  } else if (n === 4) {
-    pos.push({ x: cx - 150,  y: cy - 90  });
-    pos.push({ x: cx + 150,  y: cy - 90  });
-    pos.push({ x: cx - 150,  y: cy + 80  });
-    pos.push({ x: cx + 150,  y: cy + 80  });
-  } else if (n === 5) {
-    const r = 130;
-    for (let i = 0; i < 5; i++) {
-      const a = (i * 2 * Math.PI / 5) - Math.PI / 2;
-      pos.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
-    }
+  const MARGIN = 50;
+  const maxX = W - MARGIN - BOX_W/2;
+  const maxY = H - 80 - BOX_H/2;
+  const minX = MARGIN + BOX_W/2;
+  const minY = MARGIN + BOX_H/2;
+
+  if (n===1) {
+    pos.push({x:cx, y:cy});
+  } else if (n===2) {
+    pos.push({x:cx-155, y:cy}, {x:cx+155, y:cy});
+  } else if (n===3) {
+    pos.push({x:cx, y:minY+10}, {x:cx-150, y:maxY-20}, {x:cx+150, y:maxY-20});
+  } else if (n===4) {
+    pos.push(
+      {x:cx-150, y:minY+10}, {x:cx+150, y:minY+10},
+      {x:cx-150, y:maxY-20}, {x:cx+150, y:maxY-20}
+    );
   } else {
-    const r = Math.min(W, H) * 0.34;
-    for (let i = 0; i < n; i++) {
-      const a = (i * 2 * Math.PI / n) - Math.PI / 2;
-      pos.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+    const r = Math.min(W,H-80)*0.34;
+    for (let i=0;i<n;i++) {
+      const a = (i*2*Math.PI/n)-Math.PI/2;
+      pos.push({x:cx+r*Math.cos(a), y:cy+r*Math.sin(a)});
     }
   }
-  // Clamp to canvas
-  return pos.map(p => ({
-    x: clamp(p.x, MARGIN + BOX_W / 2, W - MARGIN - BOX_W / 2),
-    y: clamp(p.y, MARGIN + BOX_H / 2, H - MARGIN - BOX_H / 2),
+  return pos.map(p=>({
+    x: clamp(p.x, minX, maxX),
+    y: clamp(p.y, minY, maxY)
   }));
 }
 
-// ─── BOX EDGE INTERSECTION ────────────────────────────────────────────────────
-function boxEdge(px, py, tx, ty) {
-  const dx = tx - px, dy = ty - py;
-  const absDx = Math.abs(dx), absDy = Math.abs(dy);
-  const hw = BOX_W / 2 + 1, hh = BOX_H / 2 + 1;
-  if (absDx === 0 && absDy === 0) return { x: px, y: py };
-  const scaleX = absDx > 0 ? hw / absDx : Infinity;
-  const scaleY = absDy > 0 ? hh / absDy : Infinity;
-  const scale = Math.min(scaleX, scaleY);
-  return { x: px + dx * scale, y: py + dy * scale };
+// ─── VLAN EXTRACTION ──────────────────────────────────────────────────────────
+function extractVlans(devices) {
+  const map = {};
+  devices.forEach(dev => {
+    const src = dev.vlans || dev.vlanCfg || {};
+    Object.entries(src).forEach(([id, name]) => {
+      if (id==="1") return;
+      if (!map[id]) map[id] = { id, name: typeof name==="string" ? name : "" };
+    });
+  });
+  return Object.values(map).sort((a,b)=>parseInt(a.id)-parseInt(b.id)).slice(0,8);
 }
 
-// ─── MAIN SVG FUNCTION ────────────────────────────────────────────────────────
-export function renderTopologySVG(lab, theme = "dark") {
-  const devices = lab.devices || [];
-  if (devices.length === 0) return null;
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
+export function renderTopologySVG(lab, theme="dark") {
+  const devices = lab.devices||[];
+  if (!devices.length) return null;
 
-  const isDark = theme === "dark";
+  const isDark = theme==="dark";
   const C = {
-    bg:           isDark ? "#0c1118" : "#f8fafc",
-    routerFill:   isDark ? "#0d2240" : "#dbeafe",
-    routerBorder: isDark ? "#38bdf8" : "#2563eb",
-    routerText:   isDark ? "#7dd3fc" : "#1d4ed8",
-    switchFill:   isDark ? "#0a2a14" : "#dcfce7",
-    switchBorder: isDark ? "#4ade80" : "#16a34a",
-    switchText:   isDark ? "#86efac" : "#15803d",
-    link:         isDark ? "#334155" : "#94a3b8",
-    trunk:        isDark ? "#f59e0b" : "#d97706",
-    ifLabel:      isDark ? "#94a3b8" : "#475569",
-    subnetFill:   isDark ? "#1e293b" : "#e2e8f0",
-    subnetText:   isDark ? "#64748b" : "#64748b",
-    ipText:       isDark ? "#94a3b8" : "#64748b",
-    loFill:       isDark ? "#1e1040" : "#ede9fe",
-    loText:       isDark ? "#a78bfa" : "#7c3aed",
-    vlanFill:     isDark ? "#1a1a2e" : "#fef9c3",
-    vlanBorder:   isDark ? "#f59e0b" : "#ca8a04",
-    vlanText:     isDark ? "#fbbf24" : "#92400e",
-    legendBg:     isDark ? "#111827" : "#f1f5f9",
-    legendText:   isDark ? "#64748b" : "#64748b",
+    bg:           isDark?"#0c1118":"#f8fafc",
+    routerFill:   isDark?"#0d2240":"#dbeafe",
+    routerBorder: isDark?"#38bdf8":"#2563eb",
+    routerText:   isDark?"#7dd3fc":"#1d4ed8",
+    switchFill:   isDark?"#0b2614":"#dcfce7",
+    switchBorder: isDark?"#4ade80":"#16a34a",
+    switchText:   isDark?"#86efac":"#15803d",
+    link:         isDark?"#3d5068":"#94a3b8",
+    trunk:        isDark?"#f59e0b":"#d97706",
+    ifLabel:      isDark?"#94a3b8":"#475569",
+    subnetFill:   isDark?"#1a2535":"#e2e8f0",
+    subnetText:   isDark?"#64748b":"#64748b",
+    loFill:       isDark?"#1e1040":"#ede9fe",
+    loBorder:     isDark?"#7c3aed":"#7c3aed",
+    loText:       isDark?"#c4b5fd":"#6d28d9",
+    vlanFill:     isDark?"#1a1506":"#fef9c3",
+    vlanBorder:   isDark?"#ca8a04":"#ca8a04",
+    vlanText:     isDark?"#fbbf24":"#92400e",
+    pcFill:       isDark?"#1a1a1a":"#f1f5f9",
+    pcBorder:     isDark?"#64748b":"#94a3b8",
+    pcText:       isDark?"#94a3b8":"#475569",
+    legendText:   isDark?"#4b5563":"#9ca3af",
+    shadow:       "rgba(0,0,0,0.3)",
   };
 
-  const topoText = lab.topology || "";
-  const positions = computeLayout(devices.length);
+  const topoText = lab.topology||"";
+  const positions = layout(devices.length);
   const links = detectLinks(devices, topoText);
   const vlans = extractVlans(devices);
-  const hasVlans = vlans.length > 0;
 
-  // Shrink canvas height if VLANs need space at bottom
-  const vlanH = hasVlans ? 28 : 0;
-
-  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;font-family:'JetBrains Mono',monospace">`;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block" font-family="'JetBrains Mono',monospace">`;
   svg += `<rect width="${W}" height="${H}" fill="${C.bg}" rx="8"/>`;
 
-  // ─── LINKS ────────────────────────────────────────────────────────────────
+  // ─── LINKS ──────────────────────────────────────────────────────────────────
   links.forEach(lk => {
-    const p1 = positions[lk.from];
-    const p2 = positions[lk.to];
-    if (!p1 || !p2) return;
+    const p1=positions[lk.from], p2=positions[lk.to];
+    if (!p1||!p2) return;
 
-    const e1 = boxEdge(p1.x, p1.y, p2.x, p2.y);
-    const e2 = boxEdge(p2.x, p2.y, p1.x, p1.y);
-    const mx = (e1.x + e2.x) / 2;
-    const my = (e1.y + e2.y) / 2;
-    const dx = e2.x - e1.x, dy = e2.y - e1.y;
-    const len = Math.sqrt(dx*dx + dy*dy) || 1;
-    const ux = dx/len, uy = dy/len;
-    const px = -uy, py = ux; // perpendicular
+    const e1=boxEdge(p1.x,p1.y,p2.x,p2.y);
+    const e2=boxEdge(p2.x,p2.y,p1.x,p1.y);
+    const mx=(e1.x+e2.x)/2, my=(e1.y+e2.y)/2;
+    const dx=e2.x-e1.x, dy=e2.y-e1.y;
+    const len=Math.sqrt(dx*dx+dy*dy)||1;
+    const ux=dx/len, uy=dy/len;
+    const px=-uy, py=ux; // perpendicular unit
 
-    const strokeC = lk.isTrunk ? C.trunk : C.link;
+    const sc = lk.isTrunk ? C.trunk : C.link;
     const sw = lk.isTrunk ? 2.5 : 1.5;
 
-    // Double line for trunk
     if (lk.isTrunk) {
-      svg += `<line x1="${(e1.x+px*2).toFixed(1)}" y1="${(e1.y+py*2).toFixed(1)}" x2="${(e2.x+px*2).toFixed(1)}" y2="${(e2.y+py*2).toFixed(1)}" stroke="${strokeC}" stroke-width="1.5" opacity="0.7"/>`;
-      svg += `<line x1="${(e1.x-px*2).toFixed(1)}" y1="${(e1.y-py*2).toFixed(1)}" x2="${(e2.x-px*2).toFixed(1)}" y2="${(e2.y-py*2).toFixed(1)}" stroke="${strokeC}" stroke-width="1.5" opacity="0.7"/>`;
+      const off=2.5;
+      svg += `<line x1="${(e1.x+px*off).toFixed(1)}" y1="${(e1.y+py*off).toFixed(1)}" x2="${(e2.x+px*off).toFixed(1)}" y2="${(e2.y+py*off).toFixed(1)}" stroke="${sc}" stroke-width="1.2" opacity="0.6"/>`;
+      svg += `<line x1="${(e1.x-px*off).toFixed(1)}" y1="${(e1.y-py*off).toFixed(1)}" x2="${(e2.x-px*off).toFixed(1)}" y2="${(e2.y-py*off).toFixed(1)}" stroke="${sc}" stroke-width="1.2" opacity="0.6"/>`;
     }
-    svg += `<line x1="${e1.x.toFixed(1)}" y1="${e1.y.toFixed(1)}" x2="${e2.x.toFixed(1)}" y2="${e2.y.toFixed(1)}" stroke="${strokeC}" stroke-width="${sw}"/>`;
+    svg += `<line x1="${e1.x.toFixed(1)}" y1="${e1.y.toFixed(1)}" x2="${e2.x.toFixed(1)}" y2="${e2.y.toFixed(1)}" stroke="${sc}" stroke-width="${sw}"/>`;
 
-    // Interface labels — placed ALONG the line, offset perpendicular 9px, positioned 22px from box edge
-    const IFOFF = 22;
-    const PERP = 9;
+    // Interface labels — placed 1/4 and 3/4 along the link, small perpendicular offset
+    // This keeps them close to their respective box without drifting to wrong areas
+    if (len > 55) {
+      const PERP = 8; // perpendicular offset (pixels)
+      // From-side: 1/4 of the way from e1 to e2
+      const f1x = e1.x + ux*(len*0.22) + px*PERP;
+      const f1y = e1.y + uy*(len*0.22) + py*PERP;
+      // To-side: 3/4 of the way (1/4 from e2)
+      const f2x = e2.x - ux*(len*0.22) + px*PERP;
+      const f2y = e2.y - uy*(len*0.22) + py*PERP;
 
-    const f1x = (e1.x + ux*IFOFF + px*PERP).toFixed(1);
-    const f1y = (e1.y + uy*IFOFF + py*PERP).toFixed(1);
-    svg += `<text x="${f1x}" y="${f1y}" fill="${C.ifLabel}" font-size="7.5" text-anchor="middle" dominant-baseline="middle">${esc(shortIf(lk.fromIf))}</text>`;
+      // Background pill for readability
+      const lbw=28, lbh=12;
+      svg += `<rect x="${(f1x-lbw/2).toFixed(1)}" y="${(f1y-lbh/2).toFixed(1)}" width="${lbw}" height="${lbh}" fill="${C.bg}" rx="2" opacity="0.75"/>`;
+      svg += `<text x="${f1x.toFixed(1)}" y="${f1y.toFixed(1)}" fill="${C.ifLabel}" font-size="7.5" text-anchor="middle" dominant-baseline="middle">${esc(shortIf(lk.fromIf))}</text>`;
 
-    const f2x = (e2.x - ux*IFOFF + px*PERP).toFixed(1);
-    const f2y = (e2.y - uy*IFOFF + py*PERP).toFixed(1);
-    svg += `<text x="${f2x}" y="${f2y}" fill="${C.ifLabel}" font-size="7.5" text-anchor="middle" dominant-baseline="middle">${esc(shortIf(lk.toIf))}</text>`;
+      svg += `<rect x="${(f2x-lbw/2).toFixed(1)}" y="${(f2y-lbh/2).toFixed(1)}" width="${lbw}" height="${lbh}" fill="${C.bg}" rx="2" opacity="0.75"/>`;
+      svg += `<text x="${f2x.toFixed(1)}" y="${f2y.toFixed(1)}" fill="${C.ifLabel}" font-size="7.5" text-anchor="middle" dominant-baseline="middle">${esc(shortIf(lk.toIf))}</text>`;
+    }
 
-    // Subnet / IP label at midpoint
+    // Midpoint label: subnet (L3) or Trunk/Link (L2)
+    const bw=58, bh=13;
+    svg += `<rect x="${(mx-bw/2).toFixed(1)}" y="${(my-bh/2).toFixed(1)}" width="${bw}" height="${bh}" fill="${C.subnetFill}" rx="3" opacity="0.92"/>`;
     if (lk.fromIp) {
-      const net = getNetwork(lk.fromIp);
-      const oct = lk.fromIp.split("/")[0].split(".");
-      const label = `${oct[0]}.${oct[1]}.${oct[2]}.0/${net ? net.prefix : "?"}`;
-      const bw = 62, bh = 13;
-      svg += `<rect x="${(mx - bw/2).toFixed(1)}" y="${(my - bh/2).toFixed(1)}" width="${bw}" height="${bh}" fill="${C.subnetFill}" rx="3" opacity="0.9"/>`;
+      const n=getNet(lk.fromIp);
+      const octs=lk.fromIp.split("/")[0].split(".");
+      const label=`${octs[0]}.${octs[1]}.${octs[2]}.0/${n?n.bits:"?"}`;
       svg += `<text x="${mx.toFixed(1)}" y="${my.toFixed(1)}" fill="${C.subnetText}" font-size="7" text-anchor="middle" dominant-baseline="middle">${esc(label)}</text>`;
-    } else if (lk.type === "l2") {
-      // L2 link — show "Trunk" or "Link" label
+    } else {
       const label = lk.isTrunk ? "Trunk" : "Link";
-      const bw = 32, bh = 12;
-      svg += `<rect x="${(mx - bw/2).toFixed(1)}" y="${(my - bh/2).toFixed(1)}" width="${bw}" height="${bh}" fill="${C.subnetFill}" rx="3" opacity="0.85"/>`;
-      svg += `<text x="${mx.toFixed(1)}" y="${my.toFixed(1)}" fill="${lk.isTrunk ? C.trunk : C.subnetText}" font-size="7" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
+      svg += `<text x="${mx.toFixed(1)}" y="${my.toFixed(1)}" fill="${lk.isTrunk?C.trunk:C.subnetText}" font-size="7.5" font-weight="${lk.isTrunk?'bold':'normal'}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
     }
   });
 
-  // ─── DEVICES ──────────────────────────────────────────────────────────────
-  devices.forEach((dev, i) => {
-    const p = positions[i];
+  // ─── DEVICES ────────────────────────────────────────────────────────────────
+  devices.forEach((dev,i) => {
+    const p=positions[i];
     if (!p) return;
-    const isR = dev.type === "router";
-    const fill   = isR ? C.routerFill   : C.switchFill;
-    const border = isR ? C.routerBorder : C.switchBorder;
-    const tcolor = isR ? C.routerText   : C.switchText;
-    const bx = (p.x - BOX_W/2).toFixed(1);
-    const by = (p.y - BOX_H/2).toFixed(1);
+    const isR  = dev.type==="router";
+    const isPC = dev.type==="pc" || dev.name.toUpperCase().startsWith("PC");
+    const fill   = isPC?C.pcFill   : isR?C.routerFill  :C.switchFill;
+    const border = isPC?C.pcBorder : isR?C.routerBorder:C.switchBorder;
+    const tclr   = isPC?C.pcText   : isR?C.routerText  :C.switchText;
+    const bx=(p.x-BOX_W/2).toFixed(1), by=(p.y-BOX_H/2).toFixed(1);
 
-    // Shadow
-    svg += `<rect x="${(p.x - BOX_W/2 + 2).toFixed(1)}" y="${(p.y - BOX_H/2 + 2).toFixed(1)}" width="${BOX_W}" height="${BOX_H}" fill="rgba(0,0,0,0.25)" rx="6"/>`;
+    if (isPC) {
+      // PC: simple rounded box with monitor icon
+      svg += `<rect x="${(p.x-BOX_W/2+2).toFixed(1)}" y="${(p.y-BOX_H/2+3).toFixed(1)}" width="${BOX_W}" height="${BOX_H}" fill="${C.shadow}" rx="5"/>`;
+      svg += `<rect x="${bx}" y="${by}" width="${BOX_W}" height="${BOX_H}" fill="${fill}" stroke="${border}" stroke-width="1" rx="5" stroke-dasharray="3,2"/>`;
+      svg += `<text x="${(p.x-BOX_W/2+8).toFixed(1)}" y="${(p.y+1).toFixed(1)}" fill="${border}" font-size="9">💻</text>`;
+      svg += `<text x="${(p.x+8).toFixed(1)}" y="${(p.y+1).toFixed(1)}" fill="${tclr}" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${esc(dev.name)}</text>`;
+      // Show VLAN if available
+      const vlanInfo = dev.vlan || dev.vlans;
+      if (vlanInfo) {
+        const vlanStr = typeof vlanInfo === "object" ? Object.keys(vlanInfo)[0] : String(vlanInfo);
+        svg += `<text x="${p.x.toFixed(1)}" y="${(p.y+14).toFixed(1)}" fill="${tclr}" font-size="6.5" text-anchor="middle" opacity="0.7">VLAN ${vlanStr}</text>`;
+      }
+      return;
+    }
 
-    // Main box
-    svg += `<rect x="${bx}" y="${by}" width="${BOX_W}" height="${BOX_H}" fill="${fill}" stroke="${border}" stroke-width="1.5" rx="6"/>`;
+    // Drop shadow
+    svg += `<rect x="${(p.x-BOX_W/2+2).toFixed(1)}" y="${(p.y-BOX_H/2+3).toFixed(1)}" width="${BOX_W}" height="${BOX_H}" fill="${C.shadow}" rx="7"/>`;
+    // Box
+    svg += `<rect x="${bx}" y="${by}" width="${BOX_W}" height="${BOX_H}" fill="${fill}" stroke="${border}" stroke-width="1.5" rx="7"/>`;
+    // Accent top strip
+    svg += `<rect x="${bx}" y="${by}" width="${BOX_W}" height="6" fill="${border}" rx="7"/>`;
+    svg += `<rect x="${bx}" y="${(p.y-BOX_H/2+4).toFixed(1)}" width="${BOX_W}" height="2" fill="${fill}"/>`;
 
-    // Accent top bar
-    svg += `<rect x="${bx}" y="${by}" width="${BOX_W}" height="5" fill="${border}" rx="6"/>`;
-    svg += `<rect x="${bx}" y="${(p.y - BOX_H/2 + 3).toFixed(1)}" width="${BOX_W}" height="2" fill="${fill}" rx="0"/>`;
+    // Type indicator (small, top-left inside box)
+    svg += `<text x="${(p.x-BOX_W/2+7).toFixed(1)}" y="${(p.y+1).toFixed(1)}" fill="${border}" font-size="7.5" font-weight="bold" opacity="0.55">${isR?"R":"SW"}</text>`;
 
-    // Icon + name side by side
-    const icon = isR ? "R" : "SW";
-    svg += `<text x="${(p.x - BOX_W/2 + 8).toFixed(1)}" y="${(p.y - 2).toFixed(1)}" fill="${border}" font-size="8" font-weight="bold" opacity="0.6">${icon}</text>`;
-    svg += `<text x="${(p.x + 2).toFixed(1)}" y="${(p.y - 1).toFixed(1)}" fill="${tcolor}" font-size="11" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${esc(dev.name)}</text>`;
+    // Device name — centred
+    svg += `<text x="${p.x.toFixed(1)}" y="${(p.y+1).toFixed(1)}" fill="${tclr}" font-size="11" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${esc(dev.name)}</text>`;
 
-    // Type label
-    svg += `<text x="${p.x.toFixed(1)}" y="${(p.y + 12).toFixed(1)}" fill="${tcolor}" font-size="7" text-anchor="middle" dominant-baseline="middle" opacity="0.65">${isR ? "router" : "switch"}</text>`;
+    // Sub-label (router/switch)
+    svg += `<text x="${p.x.toFixed(1)}" y="${(p.y+14).toFixed(1)}" fill="${tclr}" font-size="6.5" text-anchor="middle" opacity="0.6">${isR?"router":"switch"}</text>`;
 
-    // ── Loopback addresses — shown in a pill to the RIGHT of the box ────────
-    const loopbacks = Object.entries(dev.interfaces || {})
-      .filter(([n]) => /loopback/i.test(n))
-      .map(([n, info]) => `${shortIf(n)}: ${info.ip || ""}`);
+    // ── Loopbacks: ONLY on routers, shown BELOW the box (not right, avoids link overlap) ─
+    if (isR) {
+      const loopbacks = Object.entries(dev.interfaces||{})
+        .filter(([n,info]) => /loopback/i.test(n) && info.ip)
+        .map(([n,info]) => `${shortIf(n)}: ${info.ip}`);
 
-    if (loopbacks.length > 0) {
-      const lox = p.x + BOX_W/2 + 4;
-      const loy = p.y - ((loopbacks.length - 1) * 10) / 2;
-      const maxW = Math.max(...loopbacks.map(l => l.length)) * 5 + 8;
-      svg += `<rect x="${lox.toFixed(1)}" y="${(loy - loopbacks.length * 10 / 2 - 2).toFixed(1)}" width="${maxW}" height="${(loopbacks.length * 11 + 4).toFixed(1)}" fill="${C.loFill}" rx="3" opacity="0.9"/>`;
-      loopbacks.forEach((label, li) => {
-        svg += `<text x="${(lox + 4).toFixed(1)}" y="${(loy - (loopbacks.length-1)*5 + li*11).toFixed(1)}" fill="${C.loText}" font-size="7" dominant-baseline="middle">${esc(label)}</text>`;
-      });
+      if (loopbacks.length > 0) {
+        // Place below the box so it doesn't interfere with interface labels on links
+        const pilW = Math.max(...loopbacks.map(l=>l.length)) * 5.2 + 12;
+        const pilH = loopbacks.length * 12 + 6;
+        const pilX = p.x - pilW/2;
+        const pilY = p.y + BOX_H/2 + 5;
+
+        svg += `<rect x="${pilX.toFixed(1)}" y="${pilY.toFixed(1)}" width="${pilW.toFixed(1)}" height="${pilH.toFixed(1)}" fill="${C.loFill}" stroke="${C.loBorder}" stroke-width="0.7" rx="3"/>`;
+        loopbacks.forEach((label,li) => {
+          const ty = pilY + 9 + li*12;
+          svg += `<text x="${(pilX+pilW/2).toFixed(1)}" y="${ty.toFixed(1)}" fill="${C.loText}" font-size="7" text-anchor="middle" dominant-baseline="middle">${esc(label)}</text>`;
+        });
+      }
     }
   });
 
-  // ─── VLAN TABLE ───────────────────────────────────────────────────────────
-  if (hasVlans) {
-    const tableY = H - vlanH - 6;
-    const cellW = Math.min(80, (W - 20) / vlans.length);
-    const startX = (W - cellW * vlans.length) / 2;
+  // ─── VLAN TABLE ─────────────────────────────────────────────────────────────
+  if (vlans.length > 0) {
+    const tableY = H - 38;
+    const maxCells = Math.min(vlans.length, 8);
+    const cellW = Math.min(72, (W-20)/maxCells);
+    const startX = (W - cellW*maxCells) / 2;
 
-    svg += `<text x="${W/2}" y="${tableY - 4}" fill="${C.vlanText}" font-size="7.5" text-anchor="middle" opacity="0.8">VLANs</text>`;
+    svg += `<text x="${W/2}" y="${tableY-6}" fill="${C.vlanText}" font-size="7" text-anchor="middle" opacity="0.7" font-weight="bold">VLANs</text>`;
 
-    vlans.forEach((vl, vi) => {
-      const vx = startX + vi * cellW;
-      svg += `<rect x="${vx.toFixed(1)}" y="${tableY.toFixed(1)}" width="${(cellW-2).toFixed(1)}" height="22" fill="${C.vlanFill}" stroke="${C.vlanBorder}" stroke-width="0.8" rx="3" opacity="0.9"/>`;
-      svg += `<text x="${(vx + cellW/2 - 1).toFixed(1)}" y="${(tableY + 8).toFixed(1)}" fill="${C.vlanText}" font-size="8" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${esc(vl.id)}</text>`;
-      const nameShort = vl.name ? vl.name.slice(0, 9) : "";
-      if (nameShort) {
-        svg += `<text x="${(vx + cellW/2 - 1).toFixed(1)}" y="${(tableY + 18).toFixed(1)}" fill="${C.vlanText}" font-size="6.5" text-anchor="middle" dominant-baseline="middle" opacity="0.8">${esc(nameShort)}</text>`;
+    vlans.slice(0,maxCells).forEach((vl,vi) => {
+      const vx = startX + vi*cellW + 1;
+      const vw = cellW - 2;
+      svg += `<rect x="${vx.toFixed(1)}" y="${tableY.toFixed(1)}" width="${vw.toFixed(1)}" height="26" fill="${C.vlanFill}" stroke="${C.vlanBorder}" stroke-width="0.8" rx="3"/>`;
+      // VLAN ID
+      svg += `<text x="${(vx+vw/2).toFixed(1)}" y="${(tableY+9).toFixed(1)}" fill="${C.vlanText}" font-size="8" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${esc(vl.id)}</text>`;
+      // VLAN name (truncated)
+      if (vl.name) {
+        const nameShort = vl.name.length>8 ? vl.name.slice(0,7)+"…" : vl.name;
+        svg += `<text x="${(vx+vw/2).toFixed(1)}" y="${(tableY+20).toFixed(1)}" fill="${C.vlanText}" font-size="6" text-anchor="middle" dominant-baseline="middle" opacity="0.85">${esc(nameShort)}</text>`;
       }
     });
   }
 
-  // ─── LEGEND ───────────────────────────────────────────────────────────────
-  const ly = hasVlans ? H - vlanH - 34 : H - 18;
-  svg += `<line x1="10" y1="${ly}" x2="22" y2="${ly}" stroke="${C.link}" stroke-width="1.5"/>`;
+  // ─── LEGEND ─────────────────────────────────────────────────────────────────
+  const ly = vlans.length>0 ? H-50 : H-14;
+  svg += `<line x1="8" y1="${ly}" x2="22" y2="${ly}" stroke="${C.link}" stroke-width="1.5"/>`;
   svg += `<text x="26" y="${ly}" fill="${C.legendText}" font-size="7" dominant-baseline="middle">Link</text>`;
-  svg += `<line x1="52" y1="${ly}" x2="64" y2="${ly}" stroke="${C.trunk}" stroke-width="2.5"/>`;
-  svg += `<text x="68" y="${ly}" fill="${C.legendText}" font-size="7" dominant-baseline="middle">Trunk</text>`;
-  svg += `<rect x="100" y="${(ly-4).toFixed(1)}" width="8" height="8" fill="${C.loFill}" stroke="${C.loText}" stroke-width="0.8" rx="1"/>`;
-  svg += `<text x="112" y="${ly}" fill="${C.legendText}" font-size="7" dominant-baseline="middle">Loopback</text>`;
-  if (hasVlans) {
-    svg += `<rect x="162" y="${(ly-4).toFixed(1)}" width="8" height="8" fill="${C.vlanFill}" stroke="${C.vlanBorder}" stroke-width="0.8" rx="1"/>`;
-    svg += `<text x="174" y="${ly}" fill="${C.legendText}" font-size="7" dominant-baseline="middle">VLAN</text>`;
+  svg += `<line x1="54" y1="${ly}" x2="68" y2="${ly}" stroke="${C.trunk}" stroke-width="2.5"/>`;
+  svg += `<text x="72" y="${ly}" fill="${C.legendText}" font-size="7" dominant-baseline="middle">Trunk</text>`;
+  svg += `<rect x="106" y="${(ly-4).toFixed(1)}" width="8" height="8" fill="${C.loFill}" stroke="${C.loBorder}" stroke-width="0.7" rx="1"/>`;
+  svg += `<text x="118" y="${ly}" fill="${C.legendText}" font-size="7" dominant-baseline="middle">Loopback</text>`;
+  if (vlans.length>0) {
+    svg += `<rect x="170" y="${(ly-4).toFixed(1)}" width="8" height="8" fill="${C.vlanFill}" stroke="${C.vlanBorder}" stroke-width="0.7" rx="1"/>`;
+    svg += `<text x="182" y="${ly}" fill="${C.legendText}" font-size="7" dominant-baseline="middle">VLAN</text>`;
   }
 
   svg += `</svg>`;

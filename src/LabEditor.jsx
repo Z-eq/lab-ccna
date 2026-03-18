@@ -12,7 +12,7 @@ const LABS_BY_CATEGORY = CATEGORIES.reduce((acc, cat) => {
   acc[cat] = LABS.filter(l => l.category === cat);
   return acc;
 }, {});
-const DEVICE_TYPES = ["router", "switch"];
+const DEVICE_TYPES = ["router", "switch", "pc"];
 const COMMON_INTERFACES = [
   "Ethernet0/0", "Ethernet0/1", "Ethernet0/2", "Ethernet0/3",
   "GigabitEthernet0/0", "GigabitEthernet0/1", "GigabitEthernet0/2",
