@@ -13,6 +13,27 @@ export function processCommand(input, state) {
   state = { ...state };
   state.commandHistory = [...state.commandHistory, rawCmd];
 
+  // ─── Pending crypto modulus input — intercept before anything else ────────
+  if (state._pendingCrypto) {
+    const bits = rawCmd.trim();
+    if (/^\d{3,4}$/.test(bits)) {
+      const validBits = bits;
+      state._pendingCrypto = null;
+      state.sshConfigured = true;
+      state.rsaBits = validBits;
+      if (state.mode === "config") {
+        state.globalCmds = cfgAdd(state.globalCmds, `crypto key generate rsa ${validBits}`);
+      }
+      return {
+        output: `% Generating ${validBits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
+        state
+      };
+    } else {
+      state._pendingCrypto = null;
+      return { output: "% Bad input detected.\n% RSA key generation cancelled.", state };
+    }
+  }
+
   const cmd = rawCmd;
   const lc = cmd.toLowerCase();
   const parts = lc.split(/\s+/);
@@ -136,13 +157,25 @@ export function processCommand(input, state) {
     if (first === "clock" && parts[1] === "set") {
       return { output: "", state };
     }
-    if (first === "crypto" && parts[1] === "key") {
-      state.sshConfigured = true;
-      const bits = parts.find(p => /^\d{3,4}$/.test(p)) || "1024";
-      return {
-        output: `The name for the keys will be: ${state.hostname}.lab.local\nChoose the size of the key modulus in the range of 360 to 4096 for your\n  General Purpose Keys. Choosing a key modulus greater than 512 may take\n  a few minutes.\n\nHow many bits in the modulus [512]: ${bits}\n% Generating ${bits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
-        state
-      };
+    if (first === "crypto") {
+      if (parts[1] !== "key") return { output: "% Incomplete command.", state };
+      if (parts[2] !== "generate") return { output: "% Incomplete command.", state };
+      if (parts[3] !== "rsa") return { output: "% Incomplete command.", state };
+      const bits = parts[4] && /^\d{3,4}$/.test(parts[4]) ? parts[4] : null;
+      if (bits) {
+        state.sshConfigured = true;
+        state.rsaBits = bits;
+        return {
+          output: `The name for the keys will be: ${state.hostname}.lab.local\nChoose the size of the key modulus in the range of 360 to 4096 for your\n  General Purpose Keys. Choosing a key modulus greater than 512 may take\n  a few minutes.\n\nHow many bits in the modulus [512]: ${bits}\n% Generating ${bits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
+          state
+        };
+      } else {
+        state._pendingCrypto = "privileged";
+        return {
+          output: `The name for the keys will be: ${state.hostname}.lab.local\nChoose the size of the key modulus in the range of 360 to 4096 for your\n  General Purpose Keys. Choosing a key modulus greater than 512 may take\n  a few minutes.\n\nHow many bits in the modulus [512]: `,
+          state
+        };
+      }
     }
     if (first === "undebug" || first === "debug") return { output: first === "debug" ? "Debugging enabled" : "All possible debugging has been turned off", state };
     if (first === "reload") return { output: "Proceed with reload? [confirm]\n\nSystem Bootstrap, Version 15.1(4)M4\n...\nSystem restarted", state };
@@ -188,20 +221,6 @@ export function processCommand(input, state) {
         }
       }
       return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
-    }
-
-    // ─── Pending crypto modulus input ────────────────────────────────────────
-    if (state._pendingCrypto) {
-      const bits = rawCmd.trim();
-      const validBits = /^\d{3,4}$/.test(bits) ? bits : "512";
-      state._pendingCrypto = false;
-      state.sshConfigured = true;
-      state.rsaBits = validBits;
-      state.globalCmds = cfgAdd(state.globalCmds, `crypto key generate rsa ${validBits}`);
-      return {
-        output: `% Generating ${validBits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
-        state
-      };
     }
 
     // ─── Syntax validation (before any branch processes the command) ───
@@ -505,20 +524,6 @@ export function processCommand(input, state) {
       return { output: `% Invalid input detected at '^' marker.`, state };
     }
 
-    // ─── Pending crypto modulus input ────────────────────────────────────────
-    if (state._pendingCrypto) {
-      const bits = rawCmd.trim();
-      const validBits = /^\d{3,4}$/.test(bits) ? bits : "512";
-      state._pendingCrypto = false;
-      state.sshConfigured = true;
-      state.rsaBits = validBits;
-      state.globalCmds = cfgAdd(state.globalCmds, `crypto key generate rsa ${validBits}`);
-      return {
-        output: `% Generating ${validBits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
-        state
-      };
-    }
-
     // ─── Syntax validation ───
     if (!isNo) {
       const v = validateCommand(rawCmd, state);
@@ -790,4 +795,3 @@ export function processCommand(input, state) {
 
   return { output: "", state };
 }
-
