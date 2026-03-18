@@ -44,40 +44,52 @@ function getTier(dev) {
 
 // ─── HIERARCHICAL LAYOUT ─────────────────────────────────────────────────────
 function layout(devices) {
-  const tiers = [[], [], []]; // routers, switches, PCs
-  devices.forEach((d,i) => tiers[getTier(d)].push(i));
+  const routers  = devices.map((d,i)=>({d,i})).filter(x=>getTier(x.d)===0);
+  const switches = devices.map((d,i)=>({d,i})).filter(x=>getTier(x.d)===1);
+  const pcs      = devices.map((d,i)=>({d,i})).filter(x=>getTier(x.d)===2);
 
-  const VTOP    = 55;
-  const VMID    = H/2 - 10;
-  const VBOT    = H - 85;
-  const MARGIN  = 55;
-
-  // Y positions per tier
-  const tierY = [VTOP, VMID, VBOT];
-
-  // If only 2 tiers used, spread them more
-  const usedTiers = tiers.filter(t=>t.length>0);
-  if (usedTiers.length === 2) {
-    tierY[0] = 70; tierY[1] = H/2; tierY[2] = H-80;
-  }
-
+  const MARGIN = 60;
+  const usableW = W - MARGIN*2;
   const pos = new Array(devices.length);
 
-  tiers.forEach((group, tier) => {
-    if (group.length === 0) return;
-    const y = tierY[tier];
-    const usableW = W - MARGIN*2;
-    const step = group.length > 1 ? usableW / (group.length-1) : 0;
-    const startX = group.length > 1 ? MARGIN : W/2;
-    group.forEach((devIdx, k) => {
-      pos[devIdx] = {
-        x: clamp(startX + k*step, MARGIN+PC_W/2, W-MARGIN-PC_W/2),
-        y
-      };
-    });
+  // Tier Y positions
+  const hasAll3 = routers.length>0 && switches.length>0 && pcs.length>0;
+  const YTOP = hasAll3 ? 55  : (pcs.length===0 ? 80 : 55);
+  const YMID = hasAll3 ? 185 : H/2;
+  const YBOT = hasAll3 ? 330 : H-70;
+
+  // ── Routers: spread across top ──────────────────────────────────────────
+  routers.forEach((r,k) => {
+    const step = routers.length>1 ? usableW/(routers.length-1) : 0;
+    const x = routers.length>1 ? MARGIN+k*step : W/2;
+    pos[r.i] = { x: clamp(x, MARGIN, W-MARGIN), y: YTOP };
   });
 
-  // Fallback: any unplaced devices
+  // ── Switches: spread across middle ──────────────────────────────────────
+  switches.forEach((sw,k) => {
+    const step = switches.length>1 ? usableW/(switches.length-1) : 0;
+    const x = switches.length>1 ? MARGIN+k*step : W/2;
+    pos[sw.i] = { x: clamp(x, MARGIN, W-MARGIN), y: YMID };
+  });
+
+  // ── PCs: place each PC under its parent switch ──────────────────────────
+  // First detect which switch each PC connects to via devices array order
+  // PC index k → switch index k (PC1→SW1, PC2→SW2, etc.)
+  pcs.forEach((pc,k) => {
+    let x;
+    if (switches.length > 0) {
+      // Align PC under its corresponding switch
+      const parentSwitch = switches[Math.min(k, switches.length-1)];
+      x = pos[parentSwitch.i].x;
+    } else if (routers.length > 0) {
+      x = pos[routers[0].i].x;
+    } else {
+      x = W/2;
+    }
+    pos[pc.i] = { x: clamp(x, MARGIN, W-MARGIN), y: YBOT };
+  });
+
+  // ── Fallback for any unplaced devices ───────────────────────────────────
   devices.forEach((_,i) => {
     if (!pos[i]) pos[i] = { x: W/2, y: H/2 };
   });
@@ -164,57 +176,56 @@ function detectLinks(devices, topoText) {
     });
   }
 
-  // ── 3. Smart structural inference ────────────────────────────────────────
-  // Runs always — fills in missing links based on device roles
+  // ── 3. Smart structural inference — only fills TRULY missing links ────────
   const routers  = devices.map((d,i)=>({d,i})).filter(x=>getTier(x.d)===0);
   const switches = devices.map((d,i)=>({d,i})).filter(x=>getTier(x.d)===1);
   const pcs      = devices.map((d,i)=>({d,i})).filter(x=>getTier(x.d)===2);
 
-  // a) Router → first switch (trunk) if not already linked
+  const isLinked = (idx) => links.some(lk=>lk.from===idx||lk.to===idx);
+  const freeIf   = (dev, usedSet) =>
+    Object.keys(dev.interfaces||{}).find(n=>!/loopback/i.test(n)&&!usedSet.has(n)) || "E0/0";
+  const usedIfs  = (idx) => new Set(
+    links.filter(lk=>lk.from===idx||lk.to===idx)
+         .map(lk=>lk.from===idx?lk.fromIf:lk.toIf)
+  );
+
+  // a) Unlinked routers → first switch as Trunk
   routers.forEach(r => {
-    const alreadyLinked = links.some(lk=>lk.from===r.i||lk.to===r.i);
-    if (!alreadyLinked && switches.length>0) {
-      const sw = switches[0];
-      const rIf = Object.keys(r.d.interfaces||{}).find(n=>!/loopback/i.test(n))||"E0/0";
-      const sIf = Object.keys(sw.d.interfaces||{}).find(n=>!/loopback/i.test(n))||"E0/0";
-      addLink(r.i, sw.i, rIf, sIf, "", "", true); // trunk
-    }
+    if (isLinked(r.i) || switches.length===0) return;
+    const sw = switches[0];
+    addLink(r.i, sw.i,
+      freeIf(r.d, usedIfs(r.i)),
+      freeIf(sw.d, usedIfs(sw.i)),
+      "", "", true);
   });
 
-  // b) Switch ↔ switch (trunk) — connect sequentially if not linked
+  // b) Unlinked switch pairs → Trunk sequentially
   for (let k=0; k<switches.length-1; k++) {
-    const swA = switches[k], swB = switches[k+1];
-    const linked = links.some(lk=>(lk.from===swA.i&&lk.to===swB.i)||(lk.from===swB.i&&lk.to===swA.i));
-    if (!linked) {
-      // Find free interfaces (not already used in a link)
-      const usedA = new Set(links.filter(lk=>lk.from===swA.i||lk.to===swA.i).map(lk=>lk.from===swA.i?lk.fromIf:lk.toIf));
-      const usedB = new Set(links.filter(lk=>lk.from===swB.i||lk.to===swB.i).map(lk=>lk.from===swB.i?lk.fromIf:lk.toIf));
-      const freeA = Object.keys(swA.d.interfaces||{}).find(n=>!/loopback/i.test(n)&&!usedA.has(n))||"E0/1";
-      const freeB = Object.keys(swB.d.interfaces||{}).find(n=>!/loopback/i.test(n)&&!usedB.has(n))||"E0/0";
-      addLink(swA.i, swB.i, freeA, freeB, "", "", true); // trunk between switches
-    }
+    const swA=switches[k], swB=switches[k+1];
+    if (links.some(lk=>(lk.from===swA.i&&lk.to===swB.i)||(lk.from===swB.i&&lk.to===swA.i))) continue;
+    addLink(swA.i, swB.i,
+      freeIf(swA.d, usedIfs(swA.i)),
+      freeIf(swB.d, usedIfs(swB.i)),
+      "", "", true);
   }
 
-  // c) PCs → switches: PC1→SW1, PC2→SW2 etc. by index
+  // c) Unlinked PCs → their matching switch by index (PC1→SW1, PC2→SW2)
   pcs.forEach((pc, k) => {
-    const alreadyLinked = links.some(lk=>lk.from===pc.i||lk.to===pc.i);
-    if (!alreadyLinked) {
-      const sw = switches[Math.min(k, switches.length-1)];
-      if (!sw) return;
-      const pcIf = Object.keys(pc.d.interfaces||{})[0]||"E0/0";
-      const usedSw = new Set(links.filter(lk=>lk.from===sw.i||lk.to===sw.i).map(lk=>lk.from===sw.i?lk.fromIf:lk.toIf));
-      const swIf = Object.keys(sw.d.interfaces||{}).filter(n=>!/loopback/i.test(n)&&!usedSw.has(n))[0]||"E0/2";
-      addLink(pc.i, sw.i, pcIf, swIf, "", "", false); // access link
-    }
+    if (isLinked(pc.i)) return; // already connected via topology text — don't add duplicate
+    const sw = switches[Math.min(k, switches.length-1)];
+    if (!sw) return;
+    addLink(pc.i, sw.i,
+      freeIf(pc.d, usedIfs(pc.i)),
+      freeIf(sw.d, usedIfs(sw.i)),
+      "", "", false);
   });
 
   // ── 4. Auto-promote to Trunk ──────────────────────────────────────────────
   links.forEach(lk => {
     if (lk.isTrunk) return;
-    const tA = getTier(devices[lk.from]);
-    const tB = getTier(devices[lk.to]);
-    if (!lk.fromIp && ((tA===0&&tB===1)||(tA===1&&tB===0))) lk.isTrunk = true;
-    if (!lk.fromIp && tA===1&&tB===1) lk.isTrunk = true; // switch↔switch = trunk
+    const tA=getTier(devices[lk.from]), tB=getTier(devices[lk.to]);
+    if (!lk.fromIp && ((tA===0&&tB===1)||(tA===1&&tB===0))) lk.isTrunk=true;
+    if (!lk.fromIp && tA===1&&tB===1) lk.isTrunk=true;
   });
 
   return links;
@@ -363,15 +374,19 @@ export function renderTopologySVG(lab, theme="dark") {
     const bx=(p.x-bw/2).toFixed(1), by=(p.y-bh/2).toFixed(1);
 
     if (isPC) {
-      // PC: dashed border, monitor emoji, VLAN label
+      // PC: dashed border, monitor icon drawn as SVG (no emoji - unreliable in SVG)
       svg+=`<rect x="${(p.x-bw/2+2).toFixed(1)}" y="${(p.y-bh/2+2).toFixed(1)}" width="${bw}" height="${bh}" fill="${C.shadow}" rx="5"/>`;
       svg+=`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="${fill}" stroke="${border}" stroke-width="1" rx="5" stroke-dasharray="4,2"/>`;
-      svg+=`<text x="${(p.x-bw/2+7).toFixed(1)}" y="${(p.y+1).toFixed(1)}" fill="${border}" font-size="10">💻</text>`;
-      svg+=`<text x="${(p.x+8).toFixed(1)}" y="${(p.y+1).toFixed(1)}" fill="${tclr}" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${esc(dev.name)}</text>`;
-      // VLAN info if available
+      // Monitor icon: screen + stand
+      const mx2=p.x-bw/2+10, my2=p.y-5;
+      svg+=`<rect x="${mx2}" y="${(my2-6).toFixed(1)}" width="14" height="10" fill="none" stroke="${border}" stroke-width="1" rx="1"/>`;
+      svg+=`<line x1="${(mx2+7).toFixed(1)}" y1="${(my2+4).toFixed(1)}" x2="${(mx2+7).toFixed(1)}" y2="${(my2+8).toFixed(1)}" stroke="${border}" stroke-width="1"/>`;
+      svg+=`<line x1="${(mx2+4).toFixed(1)}" y1="${(my2+8).toFixed(1)}" x2="${(mx2+10).toFixed(1)}" y2="${(my2+8).toFixed(1)}" stroke="${border}" stroke-width="1"/>`;
+      svg+=`<text x="${(p.x+6).toFixed(1)}" y="${(p.y+1).toFixed(1)}" fill="${tclr}" font-size="10" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${esc(dev.name)}</text>`;
+      // VLAN info
       const vlanKeys = Object.keys(dev.vlans||{});
       if (vlanKeys.length>0) {
-        svg+=`<text x="${p.x.toFixed(1)}" y="${(p.y+bh/2+10).toFixed(1)}" fill="${C.vlanText}" font-size="7" text-anchor="middle" opacity="0.85">VLAN ${vlanKeys[0]}</text>`;
+        svg+=`<text x="${p.x.toFixed(1)}" y="${(p.y+bh/2+11).toFixed(1)}" fill="${C.vlanText}" font-size="7" text-anchor="middle" opacity="0.85">VLAN ${vlanKeys[0]}</text>`;
       }
       return;
     }
