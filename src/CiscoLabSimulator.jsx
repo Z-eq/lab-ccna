@@ -8,6 +8,7 @@ import { buildRunningConfig } from "./iosConfig";
 import { getTaskResults } from "./taskVerification";
 import { isAdmin } from "./main";
 import { lookupCmd } from "./iosCmdTree";
+import { renderTopologySVG } from "./topoRenderer";
 
 // ─── URL helpers ──────────────────────────────────────────────────────────────
 function getLabIdFromUrl() {
@@ -800,32 +801,42 @@ export default function CiscoLabSimulator() {
 
           {sidebarTab === "topology" && (
             <div>
-              {TOPO_IMAGES[lab.id] && (
-                <div style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 12, marginBottom: 16 }}>
-                  <h3 style={{ margin: "0 0 10px", fontSize: 12, color: T.accent, letterSpacing: 1, textTransform: "uppercase" }}>Topology Diagram</h3>
-                  <img src={TOPO_IMAGES[lab.id]} alt={`Lab ${lab.id} topology`}
-                    style={{ width: "100%", borderRadius: 6, border: `1px solid ${T.border}`, background: "#fff" }} />
-                </div>
-              )}
-              <div style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 16 }}>
-                <h3 style={{ margin: "0 0 12px", fontSize: 12, color: T.accent, letterSpacing: 1, textTransform: "uppercase" }}>Network Topology (Text)</h3>
-                <pre style={{ margin: 0, fontSize: 11, color: T.textDim, lineHeight: 1.6, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{lab.topology}</pre>
+              {/* ─── SVG Topology Diagram ─── */}
+              <div style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 12, marginBottom: 12, overflow: "hidden" }}>
+                <h3 style={{ margin: "0 0 10px", fontSize: 12, color: T.accent, letterSpacing: 1, textTransform: "uppercase" }}>Network Topology</h3>
+                <div style={{ borderRadius: 6, overflow: "hidden", border: `1px solid ${T.border}` }}
+                  dangerouslySetInnerHTML={{ __html: renderTopologySVG(lab, darkMode ? "dark" : "light") || "<div style='color:#64748b;padding:16px;font-size:12px'>No topology data available</div>" }}
+                />
               </div>
-              <div style={{ marginTop: 16 }}>
+
+              {/* ─── Device table ─── */}
+              <div style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 12, marginBottom: 12 }}>
                 <h3 style={{ margin: "0 0 8px", fontSize: 12, color: T.accent, letterSpacing: 1, textTransform: "uppercase" }}>Devices</h3>
                 {lab.devices.map(d => (
-                  <div key={d.name} style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 12, marginBottom: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: 14 }}>{d.type === "router" ? "⟁" : "⊞"}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: d.type === "router" ? T.routerText : T.switchText }}>{d.name}</span>
-                      <span style={{ fontSize: 10, color: T.textMuted }}>({d.type})</span>
+                  <div key={d.name} style={{ background: T.bg, borderRadius: 6, border: `1px solid ${T.border}`, padding: "8px 10px", marginBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 13 }}>{d.type === "router" ? "⟁" : "⊞"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: d.type === "router" ? T.routerText : T.switchText }}>{d.name}</span>
+                      <span style={{ fontSize: 10, color: T.textMuted, background: T.border, padding: "1px 6px", borderRadius: 3 }}>{d.type}</span>
                     </div>
                     {d.interfaces && Object.entries(d.interfaces).map(([name, info]) => (
-                      <div key={name} style={{ fontSize: 11, color: T.textDim, marginLeft: 22 }}>{name}: {info.ip || "L2"} [{info.status}]</div>
+                      <div key={name} style={{ display: "flex", gap: 6, fontSize: 10, color: T.textDim, marginLeft: 22, marginBottom: 2 }}>
+                        <span style={{ color: T.textMuted, minWidth: 100 }}>{name}</span>
+                        <span style={{ color: info.ip ? T.accent : T.textDim }}>{info.ip || "L2"}</span>
+                        <span style={{ color: info.status === "up" ? T.accent : "#ef4444" }}>[{info.status || "up"}]</span>
+                      </div>
                     ))}
                   </div>
                 ))}
               </div>
+
+              {/* ─── Text topology fallback if exists ─── */}
+              {lab.topology && (
+                <div style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 12 }}>
+                  <h3 style={{ margin: "0 0 8px", fontSize: 12, color: T.accent, letterSpacing: 1, textTransform: "uppercase" }}>Topology Notes</h3>
+                  <pre style={{ margin: 0, fontSize: 10, color: T.textDim, lineHeight: 1.6, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>{lab.topology}</pre>
+                </div>
+              )}
             </div>
           )}
 
