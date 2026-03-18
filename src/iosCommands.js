@@ -167,6 +167,43 @@ export function processCommand(input, state) {
       }
     }
 
+    // ─── Crypto key generate rsa ─────────────────────────────────────────────
+    if (pFirst === "crypto" && !isNo) {
+      if (positiveParts[1] === "key" && positiveParts[2] === "generate" && positiveParts[3] === "rsa") {
+        const bits = positiveParts[4] || parts.find(p => /^\d{3,4}$/.test(p));
+        if (bits) {
+          state.sshConfigured = true;
+          state.rsaBits = bits;
+          state.globalCmds = cfgAdd(state.globalCmds, `crypto key generate rsa ${bits}`);
+          return {
+            output: `The name for the keys will be: ${state.hostname}.lab.local\nChoose the size of the key modulus in the range of 360 to 4096 for your\n  General Purpose Keys. Choosing a key modulus greater than 512 may take\n  a few minutes.\n\nHow many bits in the modulus [512]: ${bits}\n% Generating ${bits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
+            state
+          };
+        } else {
+          state._pendingCrypto = true;
+          return {
+            output: `The name for the keys will be: ${state.hostname}.lab.local\nChoose the size of the key modulus in the range of 360 to 4096 for your\n  General Purpose Keys. Choosing a key modulus greater than 512 may take\n  a few minutes.\n\nHow many bits in the modulus [512]: `,
+            state
+          };
+        }
+      }
+      return { output: `% Invalid input detected at '^' marker.\n\n  ${rawCmd}\n  ^`, state };
+    }
+
+    // ─── Pending crypto modulus input ────────────────────────────────────────
+    if (state._pendingCrypto) {
+      const bits = rawCmd.trim();
+      const validBits = /^\d{3,4}$/.test(bits) ? bits : "512";
+      state._pendingCrypto = false;
+      state.sshConfigured = true;
+      state.rsaBits = validBits;
+      state.globalCmds = cfgAdd(state.globalCmds, `crypto key generate rsa ${validBits}`);
+      return {
+        output: `% Generating ${validBits} bit RSA keys, keys will be non-exportable...\n[OK] (elapsed time was 1 seconds)`,
+        state
+      };
+    }
+
     // ─── Syntax validation (before any branch processes the command) ───
     if (!isNo) {
       const v = validateCommand(rawCmd, state);
@@ -753,3 +790,4 @@ export function processCommand(input, state) {
 
   return { output: "", state };
 }
+
