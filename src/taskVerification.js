@@ -120,6 +120,7 @@ export function checkTaskCompletion(task, deviceStates) {
   // ─── 9. Synthesize SSH state ───
   if (ds.sshConfigured) {
     allCmds.add("crypto key generate rsa");
+    if (ds.rsaBits) allCmds.add(`crypto key generate rsa ${ds.rsaBits}`);
   }
 
   // ─── 10. Synthesize OSPF state ───
@@ -132,12 +133,112 @@ export function checkTaskCompletion(task, deviceStates) {
     ds.users.forEach(u => { if (u.cmd) allCmds.add(u.cmd); });
   }
 
+  // ─── 12. Synthesize HSRP from interfaceCfg ───
+  // standby commands are stored in interfaceCfg as raw strings, already included via interfaceCfg loop
+  // Add combined forms for cross-line matching
+  Object.entries(ds.interfaceCfg).forEach(([iface, arr]) => {
+    const standbyLines = arr.filter(c => c.startsWith("standby"));
+    standbyLines.forEach(line => {
+      // already added above, but add interface-prefixed version too
+      allCmds.add(`${iface.toLowerCase()} ${line}`);
+    });
+  });
+
+  // ─── 13. Synthesize EtherChannel / channel-group ───
+  Object.entries(ds.interfaceCfg).forEach(([iface, arr]) => {
+    arr.filter(c => c.startsWith("channel-group")).forEach(line => {
+      allCmds.add(line);
+      allCmds.add(`interface ${iface.toLowerCase()} ${line}`);
+    });
+  });
+
+  // ─── 14. Synthesize spanning-tree per interface ───
+  Object.entries(ds.interfaceCfg).forEach(([iface, arr]) => {
+    arr.filter(c => c.startsWith("spanning-tree")).forEach(line => {
+      allCmds.add(line);
+      allCmds.add(`interface ${iface.toLowerCase()} ${line}`);
+    });
+  });
+
+  // ─── 15. Synthesize VTP ───
+  const vtpMode = ds.globalCmds.find(c => c.startsWith("vtp mode"));
+  const vtpDomain = ds.globalCmds.find(c => c.startsWith("vtp domain"));
+  const vtpVersion = ds.globalCmds.find(c => c.startsWith("vtp version"));
+  if (vtpMode) allCmds.add(vtpMode);
+  if (vtpDomain) allCmds.add(vtpDomain);
+  if (vtpVersion) allCmds.add(vtpVersion);
+
+  // ─── 16. Synthesize IPv6 unicast-routing ───
+  if (ds.globalCmds.some(c => c === "ipv6 unicast-routing")) {
+    allCmds.add("ipv6 unicast-routing");
+  }
+  // IPv6 addresses on interfaces
+  Object.entries(ds.interfaceCfg).forEach(([iface, arr]) => {
+    arr.filter(c => c.startsWith("ipv6 address") || c.startsWith("ipv6 enable")).forEach(line => {
+      allCmds.add(line);
+      allCmds.add(`interface ${iface.toLowerCase()} ${line}`);
+    });
+  });
+
+  // ─── 17. Synthesize port-channel interface config ───
+  Object.entries(ds.interfaceCfg).forEach(([iface, arr]) => {
+    if (iface.toLowerCase().startsWith("port-channel")) {
+      arr.forEach(line => {
+        allCmds.add(line);
+        allCmds.add(`interface ${iface.toLowerCase()} ${line}`);
+      });
+    }
+  });
+
+  // ─── 18. Synthesize SVI (interface Vlan) config ───
+  Object.entries(ds.interfaceCfg).forEach(([iface, arr]) => {
+    if (iface.toLowerCase().startsWith("vlan")) {
+      arr.forEach(line => {
+        allCmds.add(line);
+        allCmds.add(`interface ${iface.toLowerCase()} ${line}`);
+      });
+    }
+  });
+
+  // ─── 19. Synthesize encapsulation dot1q (subinterfaces) ───
+  Object.entries(ds.interfaceCfg).forEach(([iface, arr]) => {
+    arr.filter(c => c.startsWith("encapsulation")).forEach(line => {
+      allCmds.add(line);
+      allCmds.add(`${iface.toLowerCase()} ${line}`);
+    });
+  });
+
+  // ─── 20. Synthesize ip helper-address ───
+  Object.entries(ds.interfaceCfg).forEach(([iface, arr]) => {
+    arr.filter(c => c.startsWith("ip helper-address")).forEach(line => {
+      allCmds.add(line);
+    });
+  });
+
+  // ─── 21. Synthesize ACL application (ip access-group) ───
+  Object.entries(ds.interfaceCfg).forEach(([iface, arr]) => {
+    arr.filter(c => c.startsWith("ip access-group")).forEach(line => {
+      allCmds.add(line);
+      allCmds.add(`interface ${iface.toLowerCase()} ${line}`);
+    });
+  });
+
+  // ─── 22. Synthesize LLDP per-interface ───
+  Object.entries(ds.interfaceCfg).forEach(([iface, arr]) => {
+    arr.filter(c => c.includes("lldp")).forEach(line => {
+      allCmds.add(line);
+    });
+  });
+
   const cmdArr = Array.from(allCmds);
 
   // For each required check pattern, find if any current command matches ALL keywords
   for (const keywords of task.check) {
+    if (!keywords || keywords.length === 0) continue;
+    const lcKeywords = keywords.map(k => k.toLowerCase().trim());
     const found = cmdArr.some(cmd => {
-      return keywords.every(kw => cmd.includes(kw.toLowerCase()));
+      const lcCmd = cmd.toLowerCase();
+      return lcKeywords.every(kw => lcCmd.includes(kw));
     });
     if (!found) return false;
   }
