@@ -420,10 +420,15 @@ RULE 1 — Every connection on its own line, format: "DeviceA(IfaceA) TYPE Devic
   "SW1(E0/2) Link PC1(E0/0)"     ← switch to PC access link
   "SW2(E0/1) Link PC2(E0/0)"     ← switch to PC access link
 
-RULE 2 — Every PC MUST have its own connection line. Never omit PC connections.
-  If lab has PC1 on SW1 and PC2 on SW2, you MUST write BOTH:
-    "SW1(E0/2) Link PC1(E0/0)"
-    "SW2(E0/1) Link PC2(E0/0)"
+RULE 2 — Every PC MUST have its own connection line to a SWITCH only. NEVER connect a PC to a router.
+  If PC1, PC2, PC3 connect to SW1 and PC4, PC5, PC6 connect to SW2, you MUST write ALL SIX lines:
+    "SW1(E0/1) Link PC1(E0/0)"
+    "SW1(E0/2) Link PC2(E0/0)"
+    "SW1(E0/3) Link PC3(E0/0)"
+    "SW2(E0/1) Link PC4(E0/0)"
+    "SW2(E0/2) Link PC5(E0/0)"
+    "SW2(E0/3) Link PC6(E0/0)"
+  DO NOT skip any PC. DO NOT connect any PC to a router. PCs ONLY connect to switches.
 
 RULE 3 — Every device in "devices" array MUST appear in at least one topology line.
 
@@ -558,23 +563,42 @@ RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
   },
 },
   };  
+  // ─── PROXY MODE ────────────────────────────────────────────────────────────
+  // true  = använd Vercel serverless proxy (/api/generate) — API-nyckel lagras i Vercel
+  // false = direkt anrop till AI-provider — användaren anger sin egen nyckel
+  const USE_PROXY = true;
+
   const aiGenerate = async () => {
-    if (!aiApiKey.trim()) { setAiError("Ange API-nyckel först"); return; }
+    if (!USE_PROXY && !aiApiKey.trim()) { setAiError("Ange API-nyckel först"); return; }
     if (!aiPrompt.trim()) { setAiError("Skriv en prompt"); return; }
 
     setAiLoading(true);
     setAiError(null);
-    setAiLog(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: `Genererar med ${AI_PROVIDERS[aiProvider].name}...`, type: "info" }]);
+    setAiLog(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: `Genererar med ${USE_PROXY ? "Server (MiniMax)" : AI_PROVIDERS[aiProvider].name}...`, type: "info" }]);
 
     try {
-      const provider = AI_PROVIDERS[aiProvider];
-      const reqInit = provider.buildRequest(aiPrompt, aiApiKey);
-      const url = reqInit._url || provider.url;
-      delete reqInit._url;
+      let text;
 
-      const response = await fetch(url, reqInit);
-      const data = await response.json();
-      const text = provider.extractText(data);
+      if (USE_PROXY) {
+        // ── Proxy mode: server hanterar API-nyckeln ──────────────────────────
+        const response = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: aiPrompt, systemPrompt: AI_SYSTEM_PROMPT }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Server error");
+        text = data.text;
+      } else {
+        // ── Direkt läge: användaren anger sin nyckel ─────────────────────────
+        const provider = AI_PROVIDERS[aiProvider];
+        const reqInit = provider.buildRequest(aiPrompt, aiApiKey);
+        const url = reqInit._url || provider.url;
+        delete reqInit._url;
+        const response = await fetch(url, reqInit);
+        const data = await response.json();
+        text = provider.extractText(data);
+      }
 
       setAiLog(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: "Svar mottaget, parsar JSON...", type: "info" }]);
 
