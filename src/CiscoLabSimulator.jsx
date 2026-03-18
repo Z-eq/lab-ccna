@@ -466,7 +466,7 @@ export default function CiscoLabSimulator() {
             </div>
             {/* Center: logo + title */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 150, height: 56, background: `linear-gradient(135deg, ${T.accent}, ${T.accentAlt})`, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 900, color: darkMode ? "#0a0e17" : "#fff", boxShadow: `0 0 20px ${T.accent}40` }}>Cisco</div>
+              <div style={{ width: 150, height: 56, background: `linear-gradient(135deg, ${T.accent}, ${T.accentAlt})`, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 900, color: darkMode ? "#0a0e17" : "#fff", boxShadow: `0 0 20px ${T.accent}40` }}>C</div>
               <div style={{ textAlign: "center" }}>
                 <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: T.accent, letterSpacing: "-0.5px" }}>CCNA 200-301 Lab Simulator</h1>
                 <p style={{ margin: "4px 0 0", fontSize: 12, color: T.textMuted }}>{allLabs.length} labs{hasCustomLabs ? ` (${customLabs.length} custom)` : ""} • Cisco IOS CLI • Auto-verify</p>
@@ -884,7 +884,7 @@ export default function CiscoLabSimulator() {
           ))}
           {currentState && (
             <div style={{ display: "flex", alignItems: "center", fontSize: 13, lineHeight: 1.5 }}>
-              <span style={{ color: "#00d4aa", whiteSpace: "pre" }}>{getPrompt(currentState)} </span>
+              <span style={{ color: "#00d4aa", whiteSpace: "pre" }}>{currentState._pendingCrypto ? "How many bits in the modulus [512]: " : getPrompt(currentState) + " "}</span>
               <input ref={inputRef} value={currentInput} onChange={e => setCurrentInput(e.target.value)} onKeyDown={handleKeyDown}
                 onPaste={e => {
                   const pasted = e.clipboardData.getData("text");
