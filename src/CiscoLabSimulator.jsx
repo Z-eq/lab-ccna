@@ -467,7 +467,7 @@ export default function CiscoLabSimulator() {
             </div>
             {/* Center: logo + title */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 150, height: 56, background: `linear-gradient(135deg, ${T.accent}, ${T.accentAlt})`, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 900, color: darkMode ? "#0a0e17" : "#fff", boxShadow: `0 0 20px ${T.accent}40` }}>Lab</div>
+              <div style={{ width: 56, height: 56, background: `linear-gradient(135deg, ${T.accent}, ${T.accentAlt})`, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 900, color: darkMode ? "#0a0e17" : "#fff", boxShadow: `0 0 20px ${T.accent}40` }}>C</div>
               <div style={{ textAlign: "center" }}>
                 <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: T.accent, letterSpacing: "-0.5px" }}>CCNA 200-301 Lab Simulator</h1>
                 <p style={{ margin: "4px 0 0", fontSize: 12, color: T.textMuted }}>{allLabs.length} labs{hasCustomLabs ? ` (${customLabs.length} custom)` : ""} • Cisco IOS CLI • Auto-verify</p>
@@ -801,13 +801,22 @@ export default function CiscoLabSimulator() {
 
           {sidebarTab === "topology" && (
             <div>
-              {/* ─── SVG Topology Diagram ─── */}
-              <div style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 12, marginBottom: 12, overflow: "hidden" }}>
-                <h3 style={{ margin: "0 0 10px", fontSize: 12, color: T.accent, letterSpacing: 1, textTransform: "uppercase" }}>Network Topology</h3>
-                <div style={{ borderRadius: 6, overflow: "hidden", border: `1px solid ${T.border}` }}
-                  dangerouslySetInnerHTML={{ __html: renderTopologySVG(lab, darkMode ? "dark" : "light") || "<div style='color:#64748b;padding:16px;font-size:12px'>No topology data available</div>" }}
-                />
-              </div>
+              {/* ─── Image topology (original labs) — always takes priority ─── */}
+              {TOPO_IMAGES[lab.id] ? (
+                <div style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 12, marginBottom: 12 }}>
+                  <h3 style={{ margin: "0 0 10px", fontSize: 12, color: T.accent, letterSpacing: 1, textTransform: "uppercase" }}>Topology Diagram</h3>
+                  <img src={TOPO_IMAGES[lab.id]} alt={`Lab ${lab.id} topology`}
+                    style={{ width: "100%", borderRadius: 6, border: `1px solid ${T.border}`, background: "#fff" }} />
+                </div>
+              ) : (
+                /* ─── SVG renderer (AI-generated & custom labs) ─── */
+                <div style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 12, marginBottom: 12, overflow: "hidden" }}>
+                  <h3 style={{ margin: "0 0 10px", fontSize: 12, color: T.accent, letterSpacing: 1, textTransform: "uppercase" }}>Network Topology</h3>
+                  <div style={{ borderRadius: 6, overflow: "hidden", border: `1px solid ${T.border}` }}
+                    dangerouslySetInnerHTML={{ __html: renderTopologySVG(lab, darkMode ? "dark" : "light") || "<div style='color:#64748b;padding:16px;font-size:12px'>No topology data available</div>" }}
+                  />
+                </div>
+              )}
 
               {/* ─── Device table ─── */}
               <div style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 12, marginBottom: 12 }}>
@@ -830,7 +839,7 @@ export default function CiscoLabSimulator() {
                 ))}
               </div>
 
-              {/* ─── Text topology fallback if exists ─── */}
+              {/* ─── Text topology (original labs with topology text) ─── */}
               {lab.topology && (
                 <div style={{ background: T.card, borderRadius: 8, border: `1px solid ${T.border}`, padding: 12 }}>
                   <h3 style={{ margin: "0 0 8px", fontSize: 12, color: T.accent, letterSpacing: 1, textTransform: "uppercase" }}>Topology Notes</h3>
