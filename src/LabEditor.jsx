@@ -1234,7 +1234,7 @@ RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
                     <div style={{ marginBottom: 10 }}>
                       <label style={S.label}>Uppgiftsbeskrivning</label>
                       <FTextarea inputStyle={S.textarea} focusStyle={S.inputFocus} value={task.text} onChange={e => updateTask(ti, "text", e.target.value)}
-                        placeholder="Beskriv vad studenten ska göra..." style={{ minHeight: 50 }} />
+                        placeholder="Beskriv här vad labben handlar om och vad ska göras..." style={{ minHeight: 50 }} />
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
