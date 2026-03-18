@@ -1372,14 +1372,7 @@ RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
         </div>
       </div>
 
-      {/* ─── ENKEL GRÖN AVSLUTNINGSLINJE ─── */}
-      <div style={{ 
-        borderTop: `1px solid ${T.borderAccent}`, 
-        marginTop: "24px",  // Justera detta om du vill ha mer/mindre avstånd till innehållet ovanför
-        width: "100%" 
-      }} />
-
-      <style>{`
+        <style>{`
         @keyframes slideIn {
           from { transform: translateX(30px); opacity: 0; }
           to { transform: translateX(0); opacity: 1; }
