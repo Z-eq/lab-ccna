@@ -1373,8 +1373,19 @@ RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
       </div>
 
       {/* ─── FOOTER ─── */}
-      <div style={{ borderTop: `1px solid ${T.borderAccent}`, padding: "16px 32px", background: T.headerGrad, marginTop: "auto" }}>
-        <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ 
+        borderTop: `1px solid ${T.borderAccent}`, 
+        padding: "16px 32px", 
+        background: T.headerGrad,
+        marginTop: "40px" // Ger lite luft mellan innehållet ovanför och footern
+      }}>
+        <div style={{ 
+          maxWidth: 1400, 
+          margin: "0 auto", 
+          display: "flex", 
+          alignItems: "center", 
+          justifyContent: "center" // Detta centrerar texten horisontellt
+        }}>
           <span style={{ fontSize: 11, color: T.textDim }}>
             © {new Date().getFullYear()} Z-eq — All rights reserved
           </span>
