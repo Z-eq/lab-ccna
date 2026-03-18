@@ -123,6 +123,8 @@ function detectLinks(devices, topoText) {
       for(let k=0;k<found.length-1;k++){
         const a=found[k],b=found[k+1];
         if(a.i===b.i) continue;
+        // Never link PC to PC
+        if(getTier(devices[a.i])===2 && getTier(devices[b.i])===2) continue;
         const seg=line.substring(Math.max(0,a.idx-5),b.idx+b.name.length+25);
         const ifRe=/\b([EGFe](?:thernet|igabit|ast)?|Gi?|Fa?|Po|E)(\d+\/\d+(?:\/\d+)?)/gi;
         const ifaces=[]; let fm;
@@ -152,8 +154,11 @@ function detectLinks(devices, topoText) {
   }
   pcs.forEach((pc,k)=>{
     if(isLinked(pc.i)) return;
-    const sw=switches[Math.min(k,switches.length-1)];
+    // Assign to switch by index, cycling: PC0→SW0, PC1→SW1, PC2→SW0, PC3→SW1...
+    const sw=switches[k % switches.length];
     if(!sw) return;
+    // Only connect PC to switch, never PC to PC
+    if(getTier(devices[sw.i])!==1) return;
     addLink(pc.i,sw.i,freeIf(pc.d,usedIfs(pc.i)),freeIf(sw.d,usedIfs(sw.i)),"","",false);
   });
 
