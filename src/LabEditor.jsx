@@ -1372,25 +1372,12 @@ RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
         </div>
       </div>
 
-      {/* ─── FOOTER ─── */}
+      {/* ─── ENKEL GRÖN AVSLUTNINGSLINJE ─── */}
       <div style={{ 
         borderTop: `1px solid ${T.borderAccent}`, 
-        padding: "16px 32px", 
-        background: T.headerGrad,
-        marginTop: "40px" // Ger lite luft mellan innehållet ovanför och footern
-      }}>
-        <div style={{ 
-          maxWidth: 1400, 
-          margin: "0 auto", 
-          display: "flex", 
-          alignItems: "center", 
-          justifyContent: "center" // Detta centrerar texten horisontellt
-        }}>
-          <span style={{ fontSize: 11, color: T.textDim }}>
-            © {new Date().getFullYear()} Z-eq — All rights reserved
-          </span>
-        </div>
-      </div>
+        marginTop: "24px",  // Justera detta om du vill ha mer/mindre avstånd till innehållet ovanför
+        width: "100%" 
+      }} />
 
       <style>{`
         @keyframes slideIn {
