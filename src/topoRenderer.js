@@ -34,6 +34,7 @@ function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
 function getTier(dev) {
   if (dev.type==="router") return 0;
   if (dev.type==="pc" || /^pc/i.test(dev.name)) return 2;
+  if (dev.type==="server") return 1; // servers in middle tier with switches
   return 1;
 }
 
@@ -123,8 +124,11 @@ function detectLinks(devices, topoText) {
       for(let k=0;k<found.length-1;k++){
         const a=found[k],b=found[k+1];
         if(a.i===b.i) continue;
-        // Never link PC to PC
-        if(getTier(devices[a.i])===2 && getTier(devices[b.i])===2) continue;
+        // Never link PC to PC, or PC to router
+        const tA=getTier(devices[a.i]), tB=getTier(devices[b.i]);
+        if(tA===2 && tB===2) continue; // PC-PC
+        if(tA===2 && tB===0) continue; // PC-router
+        if(tA===0 && tB===2) continue; // router-PC
         const seg=line.substring(Math.max(0,a.idx-5),b.idx+b.name.length+25);
         const ifRe=/\b([EGFe](?:thernet|igabit|ast)?|Gi?|Fa?|Po|E)(\d+\/\d+(?:\/\d+)?)/gi;
         const ifaces=[]; let fm;
@@ -224,8 +228,17 @@ function buildDefs(isDark) {
     <polygon points="44,30 41,25 47,25" fill="${swStroke}"/>
   </symbol>
 
-  <!-- PC: Monitor + keyboard base -->
-  <symbol id="sym-pc" viewBox="0 0 48 42">
+  <!-- Server: rack server icon -->
+  <symbol id="sym-server" viewBox="0 0 52 42">
+    <rect x="2" y="2"  width="48" height="11" rx="2" fill="${pcFill}" stroke="${pcStroke}" stroke-width="1.2"/>
+    <rect x="2" y="16" width="48" height="11" rx="2" fill="${pcFill}" stroke="${pcStroke}" stroke-width="1.2"/>
+    <rect x="2" y="30" width="48" height="10" rx="2" fill="${pcFill}" stroke="${pcStroke}" stroke-width="1.2"/>
+    <circle cx="43" cy="7.5"  r="2.5" fill="${pcStroke}" opacity="0.7"/>
+    <circle cx="43" cy="21.5" r="2.5" fill="${pcStroke}" opacity="0.7"/>
+    <circle cx="43" cy="35"   r="2.5" fill="${pcStroke}" opacity="0.4"/>
+    <rect x="6" y="5"  width="28" height="5" rx="1" fill="${pcStroke}" opacity="0.15"/>
+    <rect x="6" y="19" width="28" height="5" rx="1" fill="${pcStroke}" opacity="0.15"/>
+  </symbol>
     <!-- Monitor screen -->
     <rect x="3" y="2"  width="42" height="28" rx="3" fill="${pcFill}" stroke="${pcStroke}" stroke-width="1.2"/>
     <rect x="7" y="6"  width="34" height="20" rx="1" fill="${pcFill}" stroke="${pcStroke}" stroke-width="0.5" opacity="0.5"/>
@@ -323,12 +336,13 @@ export function renderTopologySVG(lab, theme="dark") {
     if(!p) return;
     const tier=getTier(dev);
     const isR=tier===0, isPC=tier===2;
-    const symId=isR?"sym-router":isPC?"sym-pc":"sym-switch";
-    const sw=isR?SYM_W:isPC?48:56;
-    const sh=isR?SYM_H:isPC?42:40;
+    const isServer=dev.type==="server";
+    const symId=isR?"sym-router":isPC?"sym-pc":isServer?"sym-server":"sym-switch";
+    const sw=isR?SYM_W:isPC?48:isServer?52:56;
+    const sh=isR?SYM_H:isPC?42:isServer?42:40;
     const sx=(p.x-sw/2).toFixed(1);
     const sy=(p.y-sh/2).toFixed(1);
-    const nameColor=isR?C.rText:isPC?C.pcText:C.swText;
+    const nameColor=isR?C.rText:(isPC||isServer)?C.pcText:C.swText;
 
     svg+=`<use href="#${symId}" x="${sx}" y="${sy}" width="${sw}" height="${sh}"/>`;
 

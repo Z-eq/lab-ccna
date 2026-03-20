@@ -420,7 +420,7 @@ RULE 1 — Every connection on its own line, format: "DeviceA(IfaceA) TYPE Devic
   "SW1(E0/2) Link PC1(E0/0)"     ← switch to PC access link
   "SW2(E0/1) Link PC2(E0/0)"     ← switch to PC access link
 
-RULE 2 — Every PC MUST have its own connection line to a SWITCH only. NEVER connect a PC to a router.
+RULE 2 — Every PC MUST have its own connection line to a SWITCH only. NEVER connect a PC to a router or server.
   If PC1, PC2, PC3 connect to SW1 and PC4, PC5, PC6 connect to SW2, you MUST write ALL SIX lines:
     "SW1(E0/1) Link PC1(E0/0)"
     "SW1(E0/2) Link PC2(E0/0)"
@@ -428,7 +428,12 @@ RULE 2 — Every PC MUST have its own connection line to a SWITCH only. NEVER co
     "SW2(E0/1) Link PC4(E0/0)"
     "SW2(E0/2) Link PC5(E0/0)"
     "SW2(E0/3) Link PC6(E0/0)"
-  DO NOT skip any PC. DO NOT connect any PC to a router. PCs ONLY connect to switches.
+  DO NOT skip any PC. DO NOT connect any PC to a router or server. PCs ONLY connect to switches.
+
+RULE 2b — DHCP Servers, DNS Servers, and any server device:
+  Use type "server" for any server device (DHCP Server, DNS Server, NTP Server, etc.)
+  Servers connect to switches or routers — NEVER directly to PCs.
+  Example: "SW1(E0/3) Link DHCPServer(E0/0)" or "R1(E0/1) Link DHCPServer(E0/0)"
 
 RULE 3 — Every device in "devices" array MUST appear in at least one topology line.
 
@@ -438,8 +443,9 @@ RULE 4 — Use the ACTUAL interface names from the devices array, not generic "E
 RULE 5 — Device types:
   "router" — Cisco router symbol (circle with arrows)
   "switch" — Cisco switch symbol (box with port arrows)
-  "pc"     — PC symbol (monitor icon)
-  ALWAYS use type "pc" for end-hosts, never "router" or "switch"
+  "pc"     — PC/end-host symbol (monitor icon)
+  "server" — Server symbol (rack server icon)
+  ALWAYS use type "pc" for end-user PCs, "server" for servers, never mix them with "router" or "switch"
 
 RULE 6 — Loopback interfaces: only include in devices array for routers, never switches/PCs
 
@@ -1234,7 +1240,7 @@ RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
                     <div style={{ marginBottom: 10 }}>
                       <label style={S.label}>Uppgiftsbeskrivning</label>
                       <FTextarea inputStyle={S.textarea} focusStyle={S.inputFocus} value={task.text} onChange={e => updateTask(ti, "text", e.target.value)}
-                        placeholder="Beskriv här vad labben handlar om och vad ska göras..." style={{ minHeight: 50 }} />
+                        placeholder="Beskriv vad studenten ska göra..." style={{ minHeight: 50 }} />
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -1372,7 +1378,7 @@ RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
         </div>
       </div>
 
-        <style>{`
+      <style>{`
         @keyframes slideIn {
           from { transform: translateX(30px); opacity: 0; }
           to { transform: translateX(0); opacity: 1; }
