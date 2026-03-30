@@ -92,8 +92,8 @@ The API key is stored securely in Vercel — never exposed to users or visible i
 
 1. Go to [vercel.com](https://vercel.com) → your project → **Settings** → **Environment Variables**
 2. Add a new variable:
-   - Name: `MINIMAX_API_KEY`
-   - Value: your MiniMax API key
+   - Name: `YOUR_API_KEY`
+   - Value: your Claude/Gemini/OpenAI/MiniMax API key
    - Environment: Production (and Preview if needed)
 3. Click **Save**
 
@@ -149,7 +149,7 @@ If you want to remove the proxy and go fully manual:
 
 ## Admin Access
 
-Visit `/admin/secret123` to unlock the **Show Solution** button on all labs.
+Visit `/admin/123` to unlock the **Show Solution** button on all labs.
 
 The session persists until the browser tab is closed.
 
