@@ -595,11 +595,11 @@ export default function CiscoLabSimulator() {
         </div>
         {/* ─── FOOTER ─── */}
         <div style={{ borderTop: `1px solid ${T.borderAccent}`, padding: "16px 32px", background: T.headerGrad }}>
-          <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ maxWidth: 1400, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 20 }}>
             <span style={{ fontSize: 11, color: T.textDim }}>
               © {new Date().getFullYear()} Z-eq — All rights reserved
             </span>
-                       <a
+            <a
               href="https://github.com/Z-eq/"
               target="_blank"
               rel="noopener noreferrer"
@@ -613,7 +613,6 @@ export default function CiscoLabSimulator() {
               github.com/Z-eq
             </a>
           </div>
-           </div>
         </div>
       </div>
     );
