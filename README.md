@@ -3,6 +3,7 @@
 A Cisco IOS CLI simulator for practicing CCNA exam labs. Built with React + Vite, deployed on Vercel.
 
 ## Features
+Try it out: https://ccnalabs.vercel.app/
 
 - 27 pre-built CCNA labs covering Routing, Switching, IP Services, Security, IPv6
 - Full Cisco IOS CLI emulation with Tab completion and `?` inline help
