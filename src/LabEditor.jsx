@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { LABS } from "./labData";
 
-// ─── CCNA LAB EDITOR ────────────────────────────────────────────────────────
+// ─── CCNA LAB EDITOR ────────────────────const USE_PROXY────────────────────────────────────
 // Side app for creating/editing labs for the Cisco Lab Simulator
 // Outputs JSON that can be pasted directly into the LABS array
 
@@ -572,7 +572,7 @@ RETURN ONLY THE JSON OBJECT. NOTHING ELSE.`;
   // ─── PROXY MODE ────────────────────────────────────────────────────────────
   // true  = använd Vercel serverless proxy (/api/generate) — API-nyckel lagras i Vercel
   // false = direkt anrop till AI-provider — användaren anger sin egen nyckel
-  const USE_PROXY = false;
+  const USE_PROXY = true;
 
   const aiGenerate = async () => {
     if (!USE_PROXY && !aiApiKey.trim()) { setAiError("Ange API-nyckel först"); return; }
